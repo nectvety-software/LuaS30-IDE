@@ -1,4 +1,4 @@
-# LuaS30 IDE 1.15.0 – AI Workbench v1
+# LuaS30 IDE 1.0.1 – AI Workbench v1
 
 **LuaS30 IDE** là IDE + Native SDK + build pipeline dành cho ứng dụng/game Lua
 chạy theo workflow VXP trên thiết bị S30+/MRE-style.
@@ -63,6 +63,25 @@ run.bat --online
 run.bat --deps-only
 run.bat --force-deps
 ```
+
+Các lệnh launcher (kiểu VXPEngine):
+
+```bat
+run.bat deps        Cài đặt lại thư viện Python
+run.bat check       Kiểm tra môi trường
+run.bat menu        Mở menu tác vụ
+run.bat help        Hướng dẫn
+```
+
+Launcher tự tìm Python theo thứ tự: Python kèm theo bản cài
+(`python\`) → `py -3.12/3.13/3.11/3.10` → đường dẫn cài đặt quen thuộc →
+`python` trong PATH; venv hỏng tự tạo lại. Ưu tiên dùng wheels offline
+trong `vendor\wheels\` nên máy không mạng vẫn chạy được.
+
+Kiểm tra tiền đề mỗi lần chạy: Windows 64-bit, Windows 10+,
+đĩa còn ≥ 2 GB. Thiếu Visual C++ runtime thì tự tải/cài từ Microsoft
+khi có mạng. Máy GPU cũ/driver lỗi hiển thị: `set LUAS30_SOFTWARE_GL=1`
+để vẽ đồ họa bằng phần mềm.
 
 Launcher sử dụng:
 

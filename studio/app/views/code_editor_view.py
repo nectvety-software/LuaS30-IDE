@@ -127,6 +127,7 @@ class CodeEditorView(QWidget):
         self.search_panel.open_result.connect(self.open_location)
         self.search_panel.status_message.connect(self.status_message)
         self.bottom.open_location.connect(self.open_location)
+        self.bottom.ask_ai.connect(self._ask_ai_about_problems)
         self.bottom.close_requested.connect(self.hide_bottom_panel)
         self.bottom.terminal.status_message.connect(self.status_message)
         self.ai_chat.status_message.connect(self.status_message)
@@ -422,6 +423,14 @@ class CodeEditorView(QWidget):
             view.mark_rejected()
         self.ai_chat.on_code_changes_rejected()
         self.status_message.emit("AI code changes rejected")
+
+    def _ask_ai_about_problems(self, question: str) -> None:
+        """Nhan loi trich tu PROBLEMS -> dua sang Chat AI (prefill, khong auto-gui)."""
+        if not str(question or "").strip():
+            return
+        self.status_message.emit("Problem sent to Chat AI — press Enter to ask")
+        self.set_ai_visible(True)
+        self.ai_chat.prefill_question(question)
 
     def set_ai_visible(self, visible: bool) -> None:
         self._ai_visible = bool(visible)

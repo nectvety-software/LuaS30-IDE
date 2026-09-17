@@ -49,7 +49,7 @@ for token in ("_prompt_format","_input_format","_error_format","_success_format"
 for token in (
     "self.editor_view.show_hex(vxp)",
     "HEX loaded",
-    'VERSION = "1.15.0"',
+    'VERSION = "1.0.1"',
 ):
     if token not in main:
         errors.append("MainWindow HEX integration missing: "+token)

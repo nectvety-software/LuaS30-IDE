@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QColor, QFontDatabase, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTabWidget,
+    QFrame, QHBoxLayout, QLabel, QMenu, QPlainTextEdit, QPushButton, QTabWidget,
     QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -100,6 +100,12 @@ class LogView(QWidget):
 
 class ProblemsView(QTreeWidget):
     open_problem = Signal(object, int, int)
+    ask_ai_requested = Signal(str)
+
+    # Gioi han de cau hoi gui sang Chat AI gon nhe.
+    MAX_ITEMS = 15
+    SNIPPET_RADIUS = 5
+    MAX_QUESTION_CHARS = 4000
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -108,6 +114,8 @@ class ProblemsView(QTreeWidget):
         self.setColumnWidth(1, 160)
         self.setColumnWidth(2, 50)
         self.itemActivated.connect(self._activate)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._context_menu)
 
     def set_diagnostics(self, path: Path | None, diagnostics: list) -> None:
         self.clear()
@@ -129,6 +137,83 @@ class ProblemsView(QTreeWidget):
         if data:
             path, line, column = data
             self.open_problem.emit(Path(path), int(line), int(column))
+
+    def _rows(self) -> list[tuple[str, str, int, int, str]]:
+        """Tat ca dong loi: (severity, full-path, line, column, message)."""
+        rows: list[tuple[str, str, int, int, str]] = []
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            row = self._row_of(item)
+            if row:
+                rows.append(row)
+        return rows
+
+    @staticmethod
+    def _snippet(path: str, line: int, radius: int = SNIPPET_RADIUS) -> str:
+        """Vung code quanh dong loi (kem so dong), bo qua loi doc file."""
+        try:
+            lines = Path(path).read_text(encoding="utf-8-sig").splitlines()
+        except (OSError, ValueError):
+            return ""
+        if not lines or line < 1:
+            return ""
+        start = max(1, line - radius)
+        end = min(len(lines), line + radius)
+        width = len(str(end))
+        return "\n".join(f"{no:>{width}} | {lines[no - 1]}" for no in range(start, end + 1))
+
+    def format_question(self, rows: list[tuple[str, str, int, int, str]]) -> str:
+        """Gom loi thanh cau hoi Markdown kem code context cho Chat AI."""
+        rows = rows[: self.MAX_ITEMS]
+        parts = ["Giai thich nguyen nhan va cach sua cac loi Lua sau (tra loi ngan gon):", ""]
+        for severity, path, line, _column, message in rows:
+            shown = Path(path).name if path else "?"
+            parts.append(f"- **[{severity}]** `{shown}` dong {line}: {message}")
+            snippet = self._snippet(path, line) if path else ""
+            if snippet:
+                parts.append("  ```lua")
+                parts.append("  " + snippet.replace("\n", "\n  "))
+                parts.append("  ```")
+            parts.append("")
+        if len(rows) == self.MAX_ITEMS and self.topLevelItemCount() > self.MAX_ITEMS:
+            parts.append(f"_... va {self.topLevelItemCount() - self.MAX_ITEMS} loi khac._")
+        text = "\n".join(parts).strip()
+        if len(text) > self.MAX_QUESTION_CHARS:
+            text = text[: self.MAX_QUESTION_CHARS].rsplit("\n", 1)[0] + "\n_(da rut gon)_"
+        return text
+
+    def _context_menu(self, pos) -> None:
+        if self.topLevelItemCount() == 0:
+            return
+        menu = QMenu(self)
+        clicked = self.itemAt(pos)
+        if clicked is not None:
+            one = menu.addAction("Hoi AI ve loi nay")
+            one.triggered.connect(lambda: self._ask_single(clicked))
+        all_action = menu.addAction(f"Hoi AI tat ca loi ({self.topLevelItemCount()})")
+        all_action.triggered.connect(self._ask_all)
+        menu.exec(self.viewport().mapToGlobal(pos))
+
+    def _row_of(self, item: QTreeWidgetItem) -> tuple[str, str, int, int, str] | None:
+        data = item.data(0, Qt.ItemDataRole.UserRole) or ("", 0, 0)
+        path, line, column = data
+        return (
+            item.text(0).strip().lower() or "error",
+            str(path) if path else item.text(1),
+            int(line or 0),
+            int(column or 0),
+            item.text(3),
+        )
+
+    def _ask_single(self, item: QTreeWidgetItem) -> None:
+        row = self._row_of(item)
+        if row:
+            self.ask_ai_requested.emit(self.format_question([row]))
+
+    def _ask_all(self) -> None:
+        rows = self._rows()
+        if rows:
+            self.ask_ai_requested.emit(self.format_question(rows))
 
 
 class HexView(QWidget):
@@ -291,6 +376,7 @@ class HexView(QWidget):
 
 class BottomPanel(QTabWidget):
     open_location = Signal(object, int, int)
+    ask_ai = Signal(str)
     close_requested = Signal()
 
     def __init__(self, parent=None) -> None:
@@ -310,6 +396,7 @@ class BottomPanel(QTabWidget):
         self.addTab(self.terminal, "TERMINAL")
         self.addTab(self.hex_view, "HEX")
         self.problems.open_problem.connect(self.open_location)
+        self.problems.ask_ai_requested.connect(self.ask_ai)
 
         self.setDocumentMode(True)
         self.tabBar().setExpanding(False)

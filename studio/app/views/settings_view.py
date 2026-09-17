@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from app.core.paths import tool_python
 from app.ui.icons import apply_icon
 
 
@@ -352,7 +353,7 @@ class SettingsView(QWidget):
         self.mre_sdk_root_changed.emit(value)
 
     def refresh(self) -> None:
-        self.python.setText(sys.executable)
+        self.python.setText(tool_python(self.engine_root))
         self.gcc.setText(
             str(self.engine_root / "toolchain/arm-gcc/bin/arm-none-eabi-gcc.exe")
         )

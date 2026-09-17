@@ -17,7 +17,7 @@ groups=(ROOT/"studio/app/editor/editor_group_manager.py").read_text(encoding="ut
 view=(ROOT/"studio/app/views/start_page_view.py").read_text(encoding="utf-8")
 
 for token in (
-    'VERSION = "1.15.0"',
+    'VERSION = "1.0.1"',
     '"welcome"',
     '"Welcome"',
     'insert_at=0',

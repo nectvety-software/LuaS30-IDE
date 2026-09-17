@@ -34,4 +34,7 @@ ai_credentials.json
 # Huge bundled binaries (not for a first GitHub push without LFS)
 emulator/
 toolchain/arm-gcc/
+vendor/wheels/
 .workbuddy-ai/
+packaging/wix/
+dist/

@@ -1,0 +1,3 @@
+# Stable across product versions so Windows Installer can upgrade in place.
+# Do not change this GUID when bumping ProductVersion.
+{A3F5C2D1-8B4E-4F7A-9C10-6E7541301D01}

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Signal
 
+from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
 
 
@@ -50,7 +51,7 @@ class EmulatorService(QObject):
             self.failed.emit("sync_manifest.json has no VXP SHA-256.")
             return False
 
-        runner = self.engine_root / "tools" / "run_emulator.py"
+        runner = resolve_script(self.engine_root / "tools", "run_emulator")
         if not runner.is_file():
             self.failed.emit(f"Emulator runner not found: {runner}")
             return False
@@ -74,7 +75,7 @@ class EmulatorService(QObject):
         self.last_manifest = data
         self.state_changed.emit("Launching")
         self.output.emit(f'> run_emulator.py --vxp "{vxp}" --sha256 {expected}\n')
-        proc.start(sys.executable, args)
+        proc.start(tool_python(self.engine_root), args)
         if not proc.waitForStarted(3000):
             message = proc.errorString() or "Unable to start emulator runner."
             self.failed.emit(message)

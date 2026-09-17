@@ -5,7 +5,7 @@ main = (ROOT / "studio/app/ui/main_window.py").read_text(encoding="utf-8")
 errors = []
 
 for token in (
-    'VERSION = "1.15.0"',
+    'VERSION = "1.0.1"',
     'if kind in {"file", "untitled"}',
     "Skipped {skipped_source_tabs} source/untitled tab(s) on startup.",
     "def _startup_safe_editor_state",

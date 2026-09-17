@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from app.ui import palette
 from PySide6.QtCore import QRect, QSize, Qt
@@ -161,3 +162,42 @@ def apply_icon(widget, name: str, size: int = 16, color: str = "palette.TEXT_3")
 
 def apply_action_icon(action, name: str, size: int = 16) -> None:
     action.setIcon(font_icon(name, size=size))
+
+
+# --- Bieu tuong ung dung (logo LuaS30) tu thu muc app-icon/ ---
+APP_IMAGE_CANDIDATES = ("icon.png", "icon.ico", "64x64.png", "32x32.png")
+
+
+def find_app_image(engine_root: Path | str) -> Path | None:
+    """Tra ve file logo app dau tien tim thay trong <engine_root>/app-icon/."""
+    base = Path(engine_root) / "app-icon"
+    for name in APP_IMAGE_CANDIDATES:
+        candidate = base / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def app_icon(engine_root: Path | str) -> QIcon:
+    """QIcon logo app cho cua so/taskbar (fallback QIcon rong neu thieu file)."""
+    found = find_app_image(engine_root)
+    if found is None:
+        return QIcon()
+    return QIcon(str(found))
+
+
+def app_logo_pixmap(engine_root: Path | str, height: int = 22, device_ratio: float = 1.0) -> QPixmap:
+    """Pixmap logo app theo chieu cao, net tren man hinh HiDPI (fallback pixmap rong)."""
+    found = find_app_image(engine_root)
+    if found is None:
+        return QPixmap()
+    source = QPixmap(str(found))
+    if source.isNull():
+        return QPixmap()
+    ratio = device_ratio if device_ratio and device_ratio > 0 else 1.0
+    scaled = source.scaledToHeight(
+        max(1, int(height * ratio)),
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    scaled.setDevicePixelRatio(ratio)
+    return scaled

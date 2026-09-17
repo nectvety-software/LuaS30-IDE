@@ -1,36 +1,134 @@
-LuaS30 IDE — proprietary notice
-================================
+LuaS30 IDE — End-User License Agreement (EULA)
+=============================================
 
-© Qeafivels All rights reserved.
-Website: https://qeafivels.com/
+Effective date: 17 September 2026
+Product: LuaS30 IDE (including the Studio, Native SDK, build tools, templates, emulator integration, and documentation)
+Licensor: Qeafivels — https://qeafivels.com/
 
-LuaS30 IDE, including its source code, desktop Studio, LuaS30 Native SDK/API,
-build tooling, project templates, documentation and bundled project assets, is
-the property of Qeafivels.
+PLEASE READ THIS AGREEMENT CAREFULLY. BY INSTALLING, COPYING, OR USING
+LuaS30 IDE, YOU AGREE TO BE BOUND BY THE TERMS BELOW. IF YOU DO NOT AGREE,
+DO NOT INSTALL OR USE THE SOFTWARE.
 
-No part of this work may be copied, reproduced, modified, merged, published,
-distributed, sublicensed, sold, or used to create derivative works, in whole or
-in part, by any means, without the prior written permission of Qeafivels.
+1. Definitions
+--------------
+"Software" means LuaS30 IDE and all files packaged with it (source or
+bytecode), including tools, templates, documentation, and optional bundled
+runtimes such as ARM GCC and the VXP emulator when selected during install.
 
-This notice does not grant any patent, trademark or other intellectual property
-right. "LuaS30" and "LuaS30 IDE" are names used by Qeafivels; the Unicorn Engine
-name and any other third-party names remain the property of their owners.
+"You" means the individual or the legal entity on whose behalf you install
+or use the Software.
 
---------------------------------------------------------------------------------
-Third-party components
---------------------------------------------------------------------------------
+"Your Project" means any game, application, VXP package, or other work you
+create using the Software.
 
-This product uses or bundles third-party components that remain under their own
-licenses. They are NOT covered by the notice above. The authoritative list and
-attribution details are in:
+2. Grant of license
+-------------------
+Subject to this EULA, Qeafivels grants you a personal, limited, non-exclusive,
+non-transferable, revocable license to:
+
+  a) Install and use one copy of the Software on devices you own or control,
+     for the purpose of developing, building, testing, and running Your Project;
+  b) Copy the Software for backup purposes;
+  c) Use the Software to produce Your Project, including commercial Your
+     Project, provided Your Project does not include, repackage, or expose
+     the Software itself as a competing product.
+
+You may install the Software on more than one device only if those devices
+are under your exclusive control (for example, your desktop and laptop).
+
+3. Restrictions
+---------------
+Except as expressly allowed above, you may not and you must not allow others to:
+
+  a) Sell, rent, lease, sublicense, distribute, or publicly host the Software;
+  b) Reverse engineer, decompile, or disassemble the Software except to the
+     extent permitted by applicable law that cannot be waived;
+  c) Remove, alter, or obscure any proprietary notices, labels, or marks;
+  d) Use the Software to develop a product whose primary purpose is to
+     redistribute or repackage LuaS30 IDE itself;
+  e) Use the Software in any unlawful manner or to infringe third-party rights;
+  f) Export the Software in violation of export control laws.
+
+4. Your Project and your content
+--------------------------------
+You retain all rights in Your Project, assets, and Lua source you create.
+You are solely responsible for Your Project, including legality, content,
+and any third-party rights. Qeafivels receives no ownership of Your Project.
+
+5. Third-party components
+-------------------------
+The Software may include third-party open-source or redistributable components
+(for example Lua 5.1.5, ARM GCC, Qt libraries in the emulator, Unicorn Engine).
+Those components remain under their own licenses. The list and notices are in:
 
     doc/legal/THIRD_PARTY_NOTICES.md
 
-License and attribution files shipped with each component are authoritative and
-must be preserved when redistributing those components. In particular, the
-bundled Lua 5.1.5 runtime is distributed under the Lua MIT license, whose text is
-at:
+and, for Lua 5.1.5:
 
     vendor/lua-5.1.5/COPYRIGHT
 
-Detected runtime versions are visible at any time in **About → Environment**.
+Where a third-party license conflicts with this EULA for that component, the
+third-party license controls for that component only.
+
+6. Updates and telemetry
+------------------------
+Qeafivels may release updates or new versions. This EULA applies to updates
+unless a different license accompanies them.
+
+Unless you explicitly enable optional online features inside the Software,
+the Software does not require an account and does not send Your Project
+source code to Qeafivels. Optional AI features, if you use them, send only
+the content you choose to the provider you configure, under that provider's
+terms.
+
+7. Privacy and local data
+-------------------------
+The Software stores local configuration, logs, and (if you opt in) API keys
+under your user profile (for example %APPDATA%\LuaS30IDE). Projects are
+stored where you choose, typically under Documents\LuaS30 Projects.
+You are responsible for securing API keys and project data on your machine.
+
+8. No warranty
+--------------
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NON-INFRINGEMENT. Qeafivels DOES NOT WARRANT THAT THE SOFTWARE IS ERROR-FREE,
+SECURE, OR UNINTERRUPTED, OR THAT BUILD OUTPUT WILL BE ACCEPTED BY ANY
+PARTICULAR DEVICE OR FIRMWARE.
+
+9. Limitation of liability
+--------------------------
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, Qeafivels AND ITS CONTRIBUTORS SHALL
+NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
+PUNITIVE DAMAGES, OR ANY LOSS OF DATA, PROFITS, GOODWILL, OR DEVICE BRICKING
+OR CORRUPTION ARISING FROM USE OF THE SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES. Qeafivels'S TOTAL LIABILITY SHALL NOT EXCEED THE
+AMOUNT YOU PAID FOR THE SOFTWARE (IF ANY) IN THE TWELVE (12) MONTHS BEFORE
+THE CLAIM, OR ZERO (0) IF THE SOFTWARE WAS FREE.
+
+10. Indemnity
+-------------
+You agree to indemnify and hold harmless Qeafivels from claims arising out of
+Your Project or your misuse of the Software, except to the extent caused by
+Qeafivels' own willful misconduct.
+
+11. Termination
+---------------
+This license is effective until terminated. It terminates automatically if you
+breach any term. Upon termination you must destroy all copies of the Software
+in your possession. Sections 4–11 survive termination.
+
+12. Governing law
+-----------------
+This EULA is governed by the laws of Vietnam, without regard to conflict of
+law rules. Courts of the competent jurisdiction in Vietnam shall have exclusive
+venue, except where mandatory consumer protection law requires otherwise.
+
+13. Contact
+-----------
+Questions about this license: https://qeafivels.com/
+
+--------------------------------------------------------------------------------
+End of LuaS30 IDE End-User License Agreement
+--------------------------------------------------------------------------------

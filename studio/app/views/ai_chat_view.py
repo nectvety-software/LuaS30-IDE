@@ -926,13 +926,28 @@ class AIChatView(QWidget):
         self._persist_session()
         self.status_message.emit("ChatAI stopped")
 
+    def prefill_question(self, text: str) -> None:
+        """Dua cau hoi (VD: loi trich tu PROBLEMS) vao o nhap + focus.
+
+        Khong tu dong gui: nguoi dung nhan Enter de hoi (an toan chi phi API
+        va ton trong access-mode hien tai).
+        """
+        value = str(text or "").strip()
+        if not value:
+            return
+        current = self.prompt.toPlainText().strip()
+        self.prompt.setPlainText(f"{current}\n\n{value}".strip() if current else value)
+        cursor = self.prompt.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.prompt.setTextCursor(cursor)
+        self.prompt.setFocus(Qt.FocusReason.OtherFocusReason)
+
     def send(self) -> None:
         if self._agent_active or (self._worker and self._worker.isRunning()):
             return
         question = self.prompt.toPlainText().strip()
         if not question:
-            return
-        self.prompt.clear()
+            return        self.prompt.clear()
         if self._handle_slash_command(question):
             return
         self._last_question = question

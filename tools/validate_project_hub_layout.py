@@ -7,7 +7,7 @@ main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
 editor=(ROOT/"studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
 
 for token in (
-    'VERSION = "1.15.0"',
+    'VERSION = "1.0.1"',
     "self.activity_bar = self._build_activity_bar()",
     "def _set_project_hub_mode",
     'key in {"welcome", "projects"}',

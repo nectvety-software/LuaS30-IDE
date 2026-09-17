@@ -27,7 +27,7 @@ for token in ("/responses","/v1/messages",":generateContent","/chat/completions"
     if token not in providers: errors.append("provider route missing: "+token)
 for token in ("SKILLS.md","SKILL.md","PROMPT.md","IGNORED_NAMES","project_tree"):
     if token not in context: errors.append("context contract missing: "+token)
-if 'VERSION = "1.15.0"' not in main: errors.append("wrong version")
+if 'VERSION = "1.0.1"' not in main: errors.append("wrong version")
 if 'action("Toggle Chat AI", "Ctrl+Alt+I", "chat")' not in main: errors.append("ChatAI action missing")
 cfg=providers.split("class ProviderConfig",1)[1].split("class AIProviderConfigStore",1)[0]
 if "api_key:" in cfg: errors.append("ProviderConfig persists key")

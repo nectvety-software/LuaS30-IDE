@@ -277,7 +277,10 @@ def link_runtime(tc: Toolchain,objs:list[Path],axf:Path,entry_symbol:str,compat_
 
 def verify_elf(tc: Toolchain,axf:Path,report:Path,entry_symbol:str):
     if tc.profile_id=="gcc":
-        run([sys.executable,TOOLS/"verify_elf.py",tc.inspector,axf,report],timeout=60)
+        script=TOOLS/"verify_elf.py"
+        if not script.is_file():
+            script=TOOLS/"verify_elf.pyc"
+        run([sys.executable,script,tc.inspector,axf,report],timeout=60)
     else:
         cmd=[sys.executable,TOOLS/"verify_armcc_elf.py",axf,entry_symbol,report]
         if tc.inspector:
@@ -302,7 +305,7 @@ def write_sync_manifest(path:Path, project:Path, final_vxp:Path, vxp_sha:str,
                         device_vxp:Path|None, device_sha:str|None):
     data={
         "engine":"LuaS30 IDE",
-        "engine_version":"1.14.0",
+        "engine_version":"1.0.0",
         "build_time_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "project":str(project),
         "vxp":str(final_vxp.resolve()),
@@ -334,6 +337,8 @@ def write_sync_manifest(path:Path, project:Path, final_vxp:Path, vxp_sha:str,
 
 def launch_emulator(vxp:Path, sha256:str, manifest:Path, emulator:str|None):
     runner=TOOLS/"run_emulator.py"
+    if not runner.is_file():
+        runner=TOOLS/"run_emulator.pyc"
     cmd=[sys.executable,runner,"--vxp",vxp,"--sha256",sha256,"--manifest",manifest]
     if emulator: cmd += ["--emulator",emulator]
     print("[SYNC] Launching emulator with the exact VXP just built...")
@@ -415,8 +420,21 @@ def main():
     mre_sdk=detect_mre_sdk(a.mre_sdk,toolchain=tc.root)
     requested_compat=str(a.compat_profile or "auto")
     project_compat=str(cfg.get("compat_profile") or "auto")
+    explicit_native=requested_compat in {"s30plus-native","nokia225-rm1011"}
     if requested_compat=="auto" and project_compat in {"standalone","s30plus-native","nokia225-rm1011"}:
         requested_compat=project_compat
+    if requested_compat in {"s30plus-native","nokia225-rm1011"} and not explicit_native and not mre_sdk:
+        # Project ke thua profile native (wizard ghi san) nhung may khong co
+        # MRE SDK that: fallback ve standalone de build van chay duoc thay vi
+        # chet ngay build dau tien. Chi --compat-profile native explicit moi giu loi strict.
+        print("============================================================",flush=True)
+        print(f"[WARN] Project muon '{requested_compat}' nhung khong tim thay MRE SDK.",flush=True)
+        print("[WARN] Fallback sang backend 'standalone' (ARM GCC + dynamic resolver).",flush=True)
+        print("[WARN] VXP van cai/chay duoc; de link native that thi cai MRE SDK roi build lai voi --mre-sdk PATH.",flush=True)
+        if a.mre_sdk:
+            print(f"[WARN] --mre-sdk da truyen nhung khong hop le: {a.mre_sdk}",flush=True)
+        print("============================================================",flush=True)
+        requested_compat="standalone"
     compat_profile=resolve_compat_profile(
         requested_compat,
         compiler_profile=tc.profile_id,
@@ -432,7 +450,7 @@ def main():
 
     ram=a.ram or int(cfg.get("ram_kb",1024))
     api_list=str(cfg.get("mre_api") or "Audio File ProMng")
-    if compat_profile=="nokia225-rm1011":
+    if compat_profile=="nokia225-rm1011" or project_compat=="nokia225-rm1011":
         ram=a.ram or int(cfg.get("ram_kb") or NOKIA225_PROFILE["preferred_ram_kb"])
         api_list=str(cfg.get("mre_api") or NOKIA225_PROFILE["api"])
     entry_symbol=str(a.entry_symbol or tc.entry_symbol)
@@ -451,7 +469,7 @@ def main():
     shutil.rmtree(build/"toolchain-probe",ignore_errors=True)
     assert_native_sdk_independent(compat_profile)
 
-    print("=== LuaS30 IDE 1.14.0 AI Agent Shell Build ===")
+    print("=== LuaS30 IDE 1.0.1 AI Agent Shell Build ===")
     print("Runtime: LuaS30 Native SDK + embedded Lua 5.1.5")
     print("Artifact model: canonical generic VXP + optional install-time Nokia IMSI binding")
     print("S30+ compatibility:",compat_profile)
@@ -531,7 +549,7 @@ def main():
         device_sha=device_sha,
     )
     sync_data.update({
-        "engine_version":"1.14.0",
+        "engine_version":"1.0.0",
         "artifact_model":"canonical-generic-plus-optional-install-binding",
         "device_specific_artifact":bool(device_vxp),
         "runtime_detection":True,
@@ -546,7 +564,7 @@ def main():
 
     release_manifest=build/"release_manifest.json"
     release_manifest.write_text(json.dumps({
-        "engine":"LuaS30 IDE","engine_version":"1.14.0","project":name,
+        "engine":"LuaS30 IDE","engine_version":"1.0.0","project":name,
         "app_version":app_version,"mediatek_chipset":mediatek_chipset or None,
         "artifact_model":"canonical-generic-plus-optional-install-binding",
         "device_specific_artifact":bool(device_vxp),

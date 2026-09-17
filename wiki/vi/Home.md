@@ -67,7 +67,7 @@ Wiki này chỉ là cửa vào. Nguồn sự thật đầy đủ nằm trong `do
 
 ## Phiên bản
 
-Phiên bản hiện tại đọc từ file [`VERSION`](../../VERSION): **1.15.0**.
+Phiên bản hiện tại đọc từ file [`VERSION`](../../VERSION): **1.0.1**.
 
 Lịch sử thay đổi: [`doc/release/changelog/`](../../doc/release/changelog/).
 

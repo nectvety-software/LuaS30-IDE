@@ -4,7 +4,7 @@ errors=[]
 main=(ROOT/'studio/app/ui/main_window.py').read_text(encoding='utf-8')
 editor=(ROOT/'studio/app/views/code_editor_view.py').read_text(encoding='utf-8')
 theme=(ROOT/'studio/app/ui/theme.py').read_text(encoding='utf-8')
-for token in ('VERSION = "1.15.0"','Toggle Explorer / Primary Side Bar','Ctrl+Alt+A','self.explorer_toggle_button','self.activity_toggle_button','def _apply_activity_bar_toggle_action','"activity_bar_visible"','self._editor_activity_bar_visible'):
+for token in ('VERSION = "1.0.1"','Toggle Explorer / Primary Side Bar','Ctrl+Alt+A','self.explorer_toggle_button','self.activity_toggle_button','def _apply_activity_bar_toggle_action','"activity_bar_visible"','self._editor_activity_bar_visible'):
     if token not in main: errors.append('MainWindow missing: '+token)
 for token in ('def set_sidebar_visible','def sidebar_visible','_editor_sidebar_visible'):
     if token not in editor: errors.append('CodeEditorView missing: '+token)

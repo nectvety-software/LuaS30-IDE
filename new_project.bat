@@ -4,7 +4,7 @@ if "%~1"=="" (
   echo Usage: new_project.bat PROJECT_NAME
   echo.
   echo Project is created automatically in:
-  echo   Documents\LuaS30IDE\PROJECT_NAME
+  echo   Documents\LuaS30 Projects\PROJECT_NAME
   exit /b 2
 )
 
@@ -13,16 +13,19 @@ set "DOCS=%USERPROFILE%\Documents"
 for /f "usebackq delims=" %%D in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "[Environment]::GetFolderPath('MyDocuments')" 2^>nul`) do (
   if not "%%D"=="" set "DOCS=%%D"
 )
-set "PROJECTS_ROOT=%DOCS%\LuaS30IDE"
+set "PROJECTS_ROOT=%DOCS%\LuaS30 Projects"
 set "DEST=%PROJECTS_ROOT%\%PROJECT_NAME%"
 
-rem Doi ten thu muc du lieu cu LuaS30Engine -> LuaS30IDE (chi khi ten moi chua co).
-rem That bai thi dung lai ten cu, de khong tach doi du an cu sang hai thu muc.
+rem Migrate older project roots if the new folder does not exist yet.
+if not exist "%PROJECTS_ROOT%" if exist "%DOCS%\LuaS30IDE" (
+  move "%DOCS%\LuaS30IDE" "%PROJECTS_ROOT%" >nul 2>&1
+)
 if not exist "%PROJECTS_ROOT%" if exist "%DOCS%\LuaS30Engine" (
   move "%DOCS%\LuaS30Engine" "%PROJECTS_ROOT%" >nul 2>&1
 )
+if not exist "%PROJECTS_ROOT%" if exist "%DOCS%\LuaS30IDE" set "PROJECTS_ROOT=%DOCS%\LuaS30IDE"
 if not exist "%PROJECTS_ROOT%" if exist "%DOCS%\LuaS30Engine" set "PROJECTS_ROOT=%DOCS%\LuaS30Engine"
-if not exist "%PROJECTS_ROOT%" if exist "%DOCS%\LuaS30Engine" set "DEST=%PROJECTS_ROOT%\%PROJECT_NAME%"
+if not exist "%PROJECTS_ROOT%" set "DEST=%PROJECTS_ROOT%\%PROJECT_NAME%"
 
 if not exist "%PROJECTS_ROOT%" mkdir "%PROJECTS_ROOT%" >nul 2>&1
 if exist "%DEST%" (

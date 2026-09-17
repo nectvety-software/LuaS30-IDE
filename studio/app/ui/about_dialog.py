@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
 
-from app.core.paths import app_data_root, projects_root
+from app.core.paths import app_data_root, projects_root, tool_python
 from app.ui import palette
 
 # Nhà phát hành / bản quyền. MỘT nguồn duy nhất cho cả hộp thoại About lẫn tab
@@ -77,7 +77,7 @@ def collect_environment(engine_root: Path) -> list[tuple[str, str]]:
         ("ARM GCC", _tool_version(gcc)),
         ("VXPEmu", "Bundled" if emulator.is_file() else "Not found"),
         ("OS", f"{platform.system()} {platform.release()} ({platform.machine()})"),
-        ("Python executable", sys.executable),
+        ("Python executable", tool_python(engine_root)),
         ("AppData", str(app_data_root())),
         ("Projects", str(projects_root())),
     ]
@@ -86,9 +86,9 @@ def collect_environment(engine_root: Path) -> list[tuple[str, str]]:
 def _read_engine_version(engine_root: Path) -> str:
     p = engine_root / "VERSION"
     try:
-        return p.read_text(encoding="utf-8").strip() or "1.15.0"
+        return p.read_text(encoding="utf-8").strip() or "1.0.1"
     except OSError:
-        return "1.15.0"
+        return "1.0.1"
 
 
 class AboutDialog(QDialog):
@@ -216,7 +216,7 @@ class AboutDialog(QDialog):
             <p>The Studio intentionally follows a compact VS Code-like workspace: activity bar, explorer,
             editor tabs, integrated build logs, status bar, assets, UI designer and emulator tools.</p>
             <p><b>Core components:</b> Code Editor · Lua 5.1 · Native SDK/API · ARM build · VXP packaging · Emulator</p>
-            <p>Project files are stored under <code>Documents/LuaS30IDE</code>. User configuration,
+            <p>Project files are stored under <code>Documents/LuaS30 Projects</code>. User configuration,
             caches and launcher logs are stored under <code>AppData/LuaS30IDE</code>.</p>
             <hr>
             <p>{COPYRIGHT}<br>

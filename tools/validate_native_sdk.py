@@ -22,19 +22,25 @@ required=[
     "engine/src/runtime_lua.c",
     "engine/src/runtime_bridge.c",
     "profiles/generic-vxp-qvga.json",
-    "studio/app/editor/explorer_panel.py",
 ]
 missing=[x for x in required if not (ROOT/x).is_file()]
+# Studio/tools may ship as .pyc only on installed packages.
+for rel in ("studio/app/editor/explorer_panel", "tools/build"):
+    if not (ROOT/f"{rel}.py").is_file() and not (ROOT/f"{rel}.pyc").is_file():
+        missing.append(rel + ".py")
 
 profiles=[]
 for p in sorted((ROOT/"profiles").glob("*.json")):
     profiles.append(json.loads(p.read_text(encoding="utf-8"))["id"])
 
-build=(ROOT/"tools/build.py").read_text(encoding="utf-8",errors="ignore")
+build_path = ROOT/"tools/build.py"
+if not build_path.is_file():
+    build_path = ROOT/"tools/build.pyc"
+build = build_path.read_bytes() if build_path.is_file() else b""
 # Check only actual linker tokens, not the self-check strings documented in build.py.
 link_forbidden=[]
 for token in ("percommon.a","peraudio.a"):
-    if f'LINKER_LIB={token!r}' in build or f'LINKER_LIB="{token}"' in build:
+    if f'LINKER_LIB={token!r}'.encode() in build or f'LINKER_LIB="{token}"'.encode() in build:
         link_forbidden.append(token)
 
 if bad or missing or link_forbidden:

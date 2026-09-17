@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QProcess
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
+from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
 from app.ui.icons import apply_icon
 
@@ -46,7 +47,7 @@ class ToolchainDoctorView(QWidget):
     def run(self) -> None:
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
             return
-        script = self.engine_root / "tools" / "toolchain_doctor.py"
+        script = resolve_script(self.engine_root / "tools", "toolchain_doctor")
         toolchain = self.toolchain_root
         self.log.clear()
         self.state.setText("Running...")
@@ -58,7 +59,7 @@ class ToolchainDoctorView(QWidget):
         proc.finished.connect(self._finished)
         proc.setProcessEnvironment(utf8_qprocess_environment())
         proc.start(
-            sys.executable,
+            tool_python(self.engine_root),
             [
                 str(script),
                 "--toolchain", str(toolchain),

@@ -4,15 +4,19 @@ import copy
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
-from app.ui import palette
-from PySide6.QtCore import QTimer, Qt, QUrl
+from app.ui import icons, palette
+from PySide6.QtCore import QProcess, QTimer, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStatusBar, QToolButton, QVBoxLayout, QWidget,
 )
+
+from app.core.paths import resolve_script, tool_python
+from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
 
 from app.core.project_session import ProjectSession
 from app.core.workspace_session import WorkspaceSessionStore
@@ -37,7 +41,7 @@ from app.views.ui_designer_view import UIDesignerView
 
 
 class MainWindow(QMainWindow):
-    VERSION = "1.15.0"
+    VERSION = "1.0.1"
 
     def __init__(self, engine_root: Path) -> None:
         super().__init__()
@@ -73,6 +77,9 @@ class MainWindow(QMainWindow):
         self._workspace_save_timer.timeout.connect(self._save_workspace_session)
 
         self.setWindowTitle(f"LuaS30 IDE {self.VERSION}")
+        window_icon = icons.app_icon(self.engine_root)
+        if not window_icon.isNull():
+            self.setWindowIcon(window_icon)
         self.resize(1440, 860)
         self.setMinimumSize(980, 620)
 
@@ -102,6 +109,10 @@ class MainWindow(QMainWindow):
         self._wire_events()
         self._load_initial_project()
 
+        # Terminal tu chay nen (an, khong can Enter) + dialog thiet lap lan dau.
+        QTimer.singleShot(900, self._autostart_terminal)
+        QTimer.singleShot(800, self._maybe_first_run_setup)
+
     # ---------------------------------------------------------------- UI
     def _build_workbench_bar(self) -> QWidget:
         bar = QFrame()
@@ -111,8 +122,15 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(8, 2, 8, 2)
         row.setSpacing(6)
 
-        brand = QLabel("LuaS30")
+        brand = QLabel()
         brand.setObjectName("WindowBrand")
+        brand.setToolTip(f"LuaS30 IDE {self.VERSION}")
+        logo = icons.app_logo_pixmap(self.engine_root, height=22, device_ratio=brand.devicePixelRatioF())
+        if logo.isNull():
+            brand.setText("LuaS30")
+        else:
+            brand.setPixmap(logo)
+            brand.setFixedSize(logo.size())
         self.project_label = QLabel("No Folder")
         self.project_label.setObjectName("ProjectName")
 
@@ -308,14 +326,16 @@ class MainWindow(QMainWindow):
         self.project_doctor_action = action("Project Doctor", icon_name="check")
         self.compat_matrix_action = action("Runtime Compatibility Matrix", icon_name="check")
         self.toolchain_doctor_action = action("Toolchain Doctor", icon_name="build")
+        self.first_run_setup_action = action("Chạy lại thiết lập lần đầu…", icon_name="settings")
         self.clean_build_action = action("Clean Build Folder", icon_name="delete")
         self.open_project_folder_action = action("Open Project Folder", icon_name="folder_open")
         self.open_build_folder_action = action("Open Build Folder", icon_name="folder_open")
         self.open_emulator_folder_action = action("Open Emulator Folder", icon_name="folder_open")
 
-        # About
+        # About / Settings
         self.docs_action = action("Documentation", icon_name="file")
         self.environment_action = action("Environment and Libraries", icon_name="settings")
+        self.update_environment_action = action("Check & Update Environment…", "Ctrl+U", "sync")
         self.credits_action = action("Credits and Third-party Libraries", icon_name="info")
         self.about_action = action("About LuaS30 IDE", icon_name="info")
 
@@ -381,6 +401,14 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.project_doctor_action)
         tools_menu.addAction(self.compat_matrix_action)
         tools_menu.addAction(self.toolchain_doctor_action)
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.first_run_setup_action)
+
+        settings_menu = menu.addMenu("Settings")
+        settings_menu.addAction(self.update_environment_action)
+        settings_menu.addSeparator()
+        settings_menu.addAction(self.environment_action)
+        settings_menu.addAction(self.about_action)
 
         about_menu = menu.addMenu("About")
         about_menu.addAction(self.docs_action)
@@ -468,6 +496,7 @@ class MainWindow(QMainWindow):
         self.project_doctor_action.triggered.connect(self._open_project_doctor)
         self.compat_matrix_action.triggered.connect(self._open_compat_matrix)
         self.toolchain_doctor_action.triggered.connect(self._open_toolchain_doctor)
+        self.first_run_setup_action.triggered.connect(lambda: self._run_first_run_setup(force=True))
         self.clean_build_action.triggered.connect(self._clean_build)
         self.open_project_folder_action.triggered.connect(self._open_project_folder)
         self.open_build_folder_action.triggered.connect(self._open_build_folder)
@@ -475,6 +504,7 @@ class MainWindow(QMainWindow):
 
         self.docs_action.triggered.connect(self._open_docs)
         self.environment_action.triggered.connect(lambda: self.show_about("environment"))
+        self.update_environment_action.triggered.connect(self._update_environment)
         self.credits_action.triggered.connect(lambda: self.show_about("credits"))
         self.about_action.triggered.connect(lambda: self.show_about("about"))
 
@@ -915,6 +945,7 @@ class MainWindow(QMainWindow):
             self.clean_build_action, self.open_project_folder_action,
             self.open_build_folder_action, self.open_emulator_folder_action,
             self.docs_action, self.environment_action, self.credits_action, self.about_action,
+            self.update_environment_action,
         ]
         palette = CommandPalette(commands, self)
         palette.move(
@@ -1206,6 +1237,36 @@ class MainWindow(QMainWindow):
             view.set_toolchain(self._toolchain_root, self._compiler_profile)
         self._check_activity(None)
         return view
+
+    # ------------------------------------------------------------ first-run
+    def _autostart_terminal(self) -> None:
+        """Tu chay shell nen khi Studio mo xong: an, khong can Enter."""
+        try:
+            self.editor_view.bottom.terminal.autostart_background()
+        except Exception:
+            pass
+
+    def _run_first_run_setup(self, force: bool = False) -> None:
+        """Hien hop thoai thiet lap lan dau (co the goi lai tu Tools menu)."""
+        from app.views.setup_dialog import SetupDialog
+
+        try:
+            dialog = SetupDialog(self.engine_root, self.VERSION, self, force=force)
+            dialog.setup_completed.connect(
+                lambda _ok: self.show_status("Environment setup finished"))
+            dialog.exec()
+        except Exception as exc:
+            self.show_status(f"Khong mo duoc thiet lap lan dau: {exc}")
+
+    def _maybe_first_run_setup(self) -> None:
+        """Chi hien thiet lap lan dau khi chua ghi nhan hoan tat (khong chan IDE)."""
+        try:
+            from app.services.environment_setup import is_first_run
+
+            if is_first_run(self.VERSION):
+                self._run_first_run_setup()
+        except Exception as exc:
+            self.show_status(f"Khong the chay thiet lap lan dau: {exc}")
 
     # ------------------------------------------------------------ project
     def open_project_dialog(self) -> None:
@@ -1629,6 +1690,55 @@ class MainWindow(QMainWindow):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
                 return
         QMessageBox.information(self, "Documentation", "Documentation file not found.")
+
+    def _update_environment(self) -> None:
+        """Settings → Check & Update Environment: refresh Python libs / resources."""
+        script = resolve_script(self.engine_root / "tools", "dependency_manager")
+        if not script.is_file():
+            QMessageBox.warning(
+                self,
+                "Update Environment",
+                "dependency_manager not found in tools/.",
+            )
+            return
+        if getattr(self, "_env_update_proc", None) is not None:
+            return
+        proc = QProcess(self)
+        self._env_update_proc = proc
+        proc.setWorkingDirectory(str(self.engine_root))
+        proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        proc.setProcessEnvironment(utf8_qprocess_environment())
+        args = [
+            str(script),
+            "--requirements", str(self.engine_root / "requirements-studio.txt"),
+            "--python", tool_python(self.engine_root),
+            "--mode", "online",
+            "--force",
+        ]
+        self.editor_view.show_bottom_panel()
+        self.editor_view.bottom.show_console()
+        self.editor_view.clear_console()
+        self._append_output("[ENV] Checking and updating environment libraries...\n")
+        proc.readyReadStandardOutput.connect(
+            lambda: self._append_output(decode_process_bytes(proc.readAllStandardOutput()))
+        )
+
+        def _done(code: int, _status) -> None:
+            self._env_update_proc = None
+            if code == 0:
+                self._append_output("[ENV] Environment libraries are up to date.\n")
+                self.show_status("Environment libraries OK")
+            else:
+                self._append_output(f"[ENV] Update finished with exit code {code}.\n")
+                self.show_status(f"Environment update exit {code}")
+            proc.deleteLater()
+
+        proc.finished.connect(_done)
+        proc.start(tool_python(self.engine_root), args)
+        if not proc.waitForStarted(3000):
+            self._env_update_proc = None
+            self._append_output("[ENV] Unable to start dependency manager.\n")
+            proc.deleteLater()
 
     # ------------------------------------------------------------ output/status
     def _append_output(self, text: str) -> None:

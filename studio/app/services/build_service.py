@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Signal
 
+from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
 
 
@@ -63,7 +64,7 @@ class BuildService(QObject):
             return False
 
         project = Path(project).resolve()
-        builder = self.engine_root / "tools" / "build.py"
+        builder = resolve_script(self.engine_root / "tools", "build")
         toolchain = self.toolchain_root
         if not builder.is_file():
             raise FileNotFoundError(f"Builder not found: {builder}")
@@ -100,12 +101,13 @@ class BuildService(QObject):
         proc.setProcessEnvironment(utf8_qprocess_environment(extra_env))
 
         self.stage_changed.emit("Validate")
+        python = tool_python(self.engine_root)
         self.output.emit(
-            f"> {Path(sys.executable).name} tools/build.py "
+            f"> {Path(python).name} tools/build.py "
             f'--project "{project}" --toolchain "{toolchain}" '
             f'--compiler-profile {self.compiler_profile} --no-run\n'
         )
-        proc.start(sys.executable, args)
+        proc.start(python, args)
         if not proc.waitForStarted(3000):
             message = proc.errorString() or "Unable to start builder."
             self.output.emit(f"[ERROR] {message}\n")

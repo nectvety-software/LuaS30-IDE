@@ -36,7 +36,7 @@ for token in (
     'dialog = MediaTekMREConfigDialog(self)',
     'metadata=config.project_metadata()',
     'sdk_metadata=config.sdk_metadata()',
-    'VERSION = "1.15.0"',
+    'VERSION = "1.0.1"',
 ):
     if token not in main:
         errors.append('MainWindow wizard integration missing: ' + token)

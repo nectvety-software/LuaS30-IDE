@@ -117,6 +117,14 @@ def main() -> int:
     ap.add_argument("--launcher-log", type=Path)
     ap.add_argument("--state-json", type=Path)
     ap.add_argument("--force", action="store_true", help="reinstall/upgrade requirements even when satisfied")
+    ap.add_argument(
+        "--find-links",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="Local directory with .whl files for offline install. "
+        "Can be repeated. Bundled single-file installers ship vendor/wheels.",
+    )
     args = ap.parse_args()
 
     req_path = args.requirements.resolve()
@@ -148,12 +156,32 @@ def main() -> int:
             effective_mode = "online" if online else "offline"
 
         if not online:
-            print("       Offline mode active. Skipping package download/update.")
+            # Offline: install only from bundled local wheels when available.
+            targets = [s["requirement"] for s in before if (args.force or not s["satisfied"])]
+            link_dirs = [Path(d) for d in (args.find_links or [])]
+            link_dirs = [d for d in link_dirs if d.is_dir() and any(d.glob("*.whl"))]
+            if link_dirs:
+                pip_args: list[str] = ["install", "--upgrade", "--no-index"]
+                for d in link_dirs:
+                    pip_args += ["--find-links", str(d)]
+                pip_args += targets
+                print("       Installing from bundled offline wheels: " + ", ".join(str(d) for d in link_dirs))
+                rc = run_pip(python, pip_args, args.launcher_log)
+                if rc != 0:
+                    print("       [WARN] offline wheels install failed. Re-checking installed environment.")
+                    log_line(args.changes_log, f"{now_iso()} UPDATE_FAILED mode={effective_mode} targets={targets} wheels={[str(d) for d in link_dirs]}")
+            else:
+                print("       Offline mode active. Skipping package download/update.")
         else:
             targets = [s["requirement"] for s in before if (args.force or not s["satisfied"])]
             if targets:
                 print("       Updating only required packages: " + ", ".join(targets))
-                rc = run_pip(python, ["install", "--upgrade", *targets], args.launcher_log)
+                pip_args = ["install", "--upgrade"]
+                for d in (args.find_links or []):
+                    if Path(d).is_dir() and any(Path(d).glob("*.whl")):
+                        pip_args += ["--find-links", str(Path(d))]
+                pip_args += targets
+                rc = run_pip(python, pip_args, args.launcher_log)
                 if rc != 0:
                     print("       [WARN] pip update failed. Re-checking installed environment.")
                     log_line(args.changes_log, f"{now_iso()} UPDATE_FAILED mode={effective_mode} targets={targets}")

@@ -335,7 +335,15 @@ Canonical ownership:
 - Activity Bar: Explorer, Search, Assets, UI Designer, Emulator, Settings.
 - Bottom Panel: OUTPUT, BUILD, PROBLEMS.
 - Run menu: build/emulator execution.
-- Tools menu: Project Doctor, clean build and folder utilities.
+- Tools menu: Project Doctor, clean build and folder utilities, rerun first-run setup.
+- First-run setup: ~0.8s after launch (first time or new version) Studio shows
+  "Thiết lập LuaS30 IDE lần đầu" with per-component status
+  (Đã có / Có thể cài tự động / Cần làm thủ công) and Bỏ qua / Kiểm tra lại /
+  Tự động cài đặt buttons. Rerun anytime from Tools menu.
+  Backed by `studio/app/services/environment_setup.py`; VC++ runtime installs
+  via `tools/install_vc_runtime.py`. Never blocks IDE startup.
+- Integrated terminal autostarts hidden in the background at launch
+  (`autostart_background`, no focus steal, no Enter needed).
 - About menu: documentation, environment and credits.
 
 The former Dashboard, Projects, Build and standalone Console pages are not part of

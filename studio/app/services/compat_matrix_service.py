@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Signal
 
+from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
 
 
@@ -25,7 +26,7 @@ class CompatMatrixService(QObject):
     def start(self) -> bool:
         if self.active:
             return False
-        script = self.engine_root / "tools" / "runtime_compat_matrix.py"
+        script = resolve_script(self.engine_root / "tools", "runtime_compat_matrix")
         out = self.engine_root / "build" / "runtime_compat_matrix"
         if not script.is_file():
             raise FileNotFoundError(script)
@@ -37,7 +38,7 @@ class CompatMatrixService(QObject):
         proc.readyReadStandardOutput.connect(self._read)
         proc.finished.connect(self._finished)
         proc.setProcessEnvironment(utf8_qprocess_environment())
-        proc.start(sys.executable, [str(script), "--out", str(out)])
+        proc.start(tool_python(self.engine_root), [str(script), "--out", str(out)])
         if not proc.waitForStarted(3000):
             message = proc.errorString() or "Unable to start compatibility matrix."
             self.output.emit(f"[COMPAT] {message}\n")

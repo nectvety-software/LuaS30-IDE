@@ -77,7 +77,7 @@ class TerminalSurface(QPlainTextEdit):
         self.setTextCursor(cursor)
         self.ensureCursorVisible()
 
-    def show_prompt(self, prompt: str) -> None:
+    def show_prompt(self, prompt: str, focus: bool = True) -> None:
         self._prompt = prompt
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -94,7 +94,8 @@ class TerminalSurface(QPlainTextEdit):
         self._input_start = cursor.position()
         self._history_index = len(self._history)
         self.ensureCursorVisible()
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        if focus:
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def suspend_input(self) -> None:
         self._input_start = None
@@ -283,6 +284,7 @@ class IntegratedTerminal(QWidget):
         self._active_command = ""
         self._active_origin = "user"
         self._command_capture = ""
+        self._focus_on_prompt = True
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -352,17 +354,27 @@ class IntegratedTerminal(QWidget):
         cwd = str(self._current_cwd)
         return f"{cwd}> " if os.name == "nt" else f"{cwd}$ "
 
-    def ensure_started(self) -> None:
+    def ensure_started(self, focus: bool = True) -> None:
+        """Dam bao shell dang chay. focus=False: chay nen, khong cuop focus."""
         if not self.running:
-            self.start_terminal()
-        else:
+            self.start_terminal(focus=focus)
+            return
+        if focus:
             if not self.surface.input_active() and not self._waiting_for_marker:
                 self.surface.show_prompt(self._prompt())
             self.surface.setFocus(Qt.FocusReason.OtherFocusReason)
 
-    def start_terminal(self) -> None:
+    def autostart_background(self) -> None:
+        """Tu chay shell khi Studio mo xong: nen, an, khong can Enter."""
+        try:
+            self.ensure_started(focus=False)
+        except Exception:
+            pass
+
+    def start_terminal(self, focus: bool = True) -> None:
         if self.running:
             return
+        self._focus_on_prompt = bool(focus)
         program, args, label = self._shell()
         self._shell_name = label
         self._current_cwd = self.project_root or Path.cwd()
@@ -596,7 +608,7 @@ class IntegratedTerminal(QWidget):
         self.state.setText(self._shell_name)
         self.state_changed.emit("running")
         self.status_message.emit(f"Terminal started: {self._shell_name}")
-        self.surface.show_prompt(self._prompt())
+        self.surface.show_prompt(self._prompt(), focus=getattr(self, "_focus_on_prompt", True))
 
     def _finished(self, process: QProcess, exit_code: int, _status) -> None:
         self._read_stdout(process)
