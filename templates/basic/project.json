@@ -1,0 +1,18 @@
+{
+  "name": "LuaS30 Demo",
+  "vendor": "LuaS30",
+  "appid": 262567,
+  "ram_kb": 1024,
+  "screen_width": 240,
+  "screen_height": 320,
+  "fps": 15,
+  "runtime_target": "mre-s30plus",
+  "single_vxp": true,
+  "compat_profile": "auto",
+  "mre_api": "Audio File ProMng",
+  "app_version": "1.0.0",
+  "mediatek_chipset": "MTK6260",
+  "mediatek_chipset_label": "MTK6260  (Nokia 220, 225)",
+  "resolution": "240x320",
+  "resolution_label": "240x320  (QVGA - Chuẩn Nokia)"
+}

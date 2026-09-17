@@ -1,0 +1,25 @@
+{
+  "id": "ads12",
+  "name": "ARM ADS 1.2",
+  "detection": [
+    "tcc or armcc",
+    "armlink",
+    "fromelf"
+  ],
+  "compiler_flags": [
+    "-O2",
+    "-g",
+    "-apcs /fpic",
+    "-cpu ARM7EJ-S",
+    "-D__MRE_COMPILER_ADS__"
+  ],
+  "linker_flags": [
+    "-elf",
+    "-reloc",
+    "-entry ads_entry",
+    "-first ads_entry"
+  ],
+  "entry_symbol": "ads_entry",
+  "entry_note": "LuaS30 compatibility convention. Override with --entry-symbol when matching a preserved ADS/MRELauncher project.",
+  "status": "compatibility-profile-local-toolchain-required"
+}

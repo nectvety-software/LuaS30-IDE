@@ -1,0 +1,24 @@
+{
+  "id": "nokia-225-dual-sim",
+  "name": "Nokia 225 Dual SIM",
+  "screen": [
+    240,
+    320
+  ],
+  "ram_kb": 1536,
+  "fps": 15,
+  "arch": "armv5te",
+  "float_abi": "soft",
+  "binding": "imsi",
+  "notes": "Retail devices may require device/SIM binding depending on firmware policy.",
+  "compatibility_status": "UNTESTED",
+  "packaging": {
+    "signing": "none",
+    "binding": "imsi",
+    "policy_note": "IMSI binding writes tag 0x12 only and is NOT signing. The IDE produces unsigned VXP, so retail firmware that enforces certificate trust will refuse to open it."
+  },
+  "security": {
+    "release_native_strip": true,
+    "lua_protection": "auto"
+  }
+}

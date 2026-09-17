@@ -1,0 +1,305 @@
+{
+  "schema": 1,
+  "engine_version": "1.8.3",
+  "description": "Host-side mirror of LuaS30 1.8.3 runtime ABI/capability contract.",
+  "bindings": {
+    "mem_alloc": {
+      "symbols": [
+        "vm_malloc"
+      ]
+    },
+    "mem_realloc": {
+      "symbols": [
+        "vm_realloc"
+      ]
+    },
+    "mem_free": {
+      "symbols": [
+        "vm_free"
+      ]
+    },
+    "reg_system": {
+      "slot": 0,
+      "symbols": [
+        "vm_reg_sysevt_callback",
+        "vm_reg_system_event_callback"
+      ]
+    },
+    "reg_key": {
+      "slot": 1,
+      "symbols": [
+        "vm_reg_keyboard_callback",
+        "vm_reg_key_callback"
+      ]
+    },
+    "reg_pen": {
+      "slot": 2,
+      "symbols": [
+        "vm_reg_pen_callback",
+        "vm_reg_touch_callback"
+      ]
+    },
+    "ticks": {
+      "slot": 3,
+      "symbols": [
+        "vm_get_tick_count",
+        "vm_get_tick"
+      ]
+    },
+    "exit_app": {
+      "symbols": [
+        "vm_exit_app"
+      ]
+    },
+    "res_init": {
+      "slot": 4,
+      "symbols": [
+        "vm_res_init",
+        "vm_resource_init"
+      ]
+    },
+    "res_load": {
+      "slot": 5,
+      "symbols": [
+        "vm_load_resource",
+        "vm_res_load"
+      ]
+    },
+    "timer_create": {
+      "symbols": [
+        "vm_create_timer"
+      ]
+    },
+    "timer_delete": {
+      "symbols": [
+        "vm_delete_timer"
+      ]
+    },
+    "screen_w": {
+      "slot": 6,
+      "symbols": [
+        "vm_graphic_get_screen_width",
+        "vm_graphic_get_screen_w"
+      ]
+    },
+    "screen_h": {
+      "slot": 7,
+      "symbols": [
+        "vm_graphic_get_screen_height",
+        "vm_graphic_get_screen_h"
+      ]
+    },
+    "layer_create": {
+      "symbols": [
+        "vm_graphic_create_layer"
+      ]
+    },
+    "layer_delete": {
+      "symbols": [
+        "vm_graphic_delete_layer"
+      ]
+    },
+    "set_clip": {
+      "symbols": [
+        "vm_graphic_set_clip"
+      ]
+    },
+    "set_font": {
+      "symbols": [
+        "vm_graphic_set_font"
+      ]
+    },
+    "layer_buffer": {
+      "symbols": [
+        "vm_graphic_get_layer_buffer"
+      ]
+    },
+    "fill_rect": {
+      "symbols": [
+        "vm_graphic_fill_rect"
+      ]
+    },
+    "textout": {
+      "symbols": [
+        "vm_graphic_textout"
+      ]
+    },
+    "string_width": {
+      "slot": 8,
+      "symbols": [
+        "vm_graphic_get_string_width",
+        "vm_graphic_get_text_width"
+      ]
+    },
+    "char_height": {
+      "slot": 9,
+      "symbols": [
+        "vm_graphic_get_character_height",
+        "vm_graphic_get_font_height"
+      ]
+    },
+    "line": {
+      "symbols": [
+        "vm_graphic_line"
+      ]
+    },
+    "flush": {
+      "symbols": [
+        "vm_graphic_flush_layer"
+      ]
+    },
+    "image_load": {
+      "slot": 10,
+      "symbols": [
+        "vm_graphic_load_image",
+        "vm_graphic_load_img"
+      ]
+    },
+    "image_prop": {
+      "slot": 11,
+      "symbols": [
+        "vm_graphic_get_img_property",
+        "vm_graphic_get_image_property"
+      ]
+    },
+    "image_buffer": {
+      "slot": 12,
+      "symbols": [
+        "vm_graphic_get_canvas_buffer",
+        "vm_graphic_get_image_buffer"
+      ]
+    },
+    "image_release": {
+      "slot": 13,
+      "symbols": [
+        "vm_graphic_release_canvas",
+        "vm_graphic_release_image"
+      ]
+    },
+    "system_drive": {
+      "symbols": [
+        "vm_get_system_driver"
+      ]
+    },
+    "removable_drive": {
+      "slot": 14,
+      "symbols": [
+        "vm_get_removeable_driver",
+        "vm_get_removable_driver"
+      ]
+    },
+    "file_open": {
+      "symbols": [
+        "vm_file_open"
+      ]
+    },
+    "file_close": {
+      "symbols": [
+        "vm_file_close"
+      ]
+    },
+    "file_read": {
+      "symbols": [
+        "vm_file_read"
+      ]
+    },
+    "file_write": {
+      "symbols": [
+        "vm_file_write"
+      ]
+    },
+    "file_commit": {
+      "symbols": [
+        "vm_file_commit"
+      ]
+    },
+    "file_size": {
+      "slot": 15,
+      "symbols": [
+        "vm_file_getfilesize",
+        "vm_file_get_file_size"
+      ]
+    },
+    "file_delete": {
+      "symbols": [
+        "vm_file_delete"
+      ]
+    },
+    "file_rename": {
+      "symbols": [
+        "vm_file_rename"
+      ]
+    },
+    "audio_play": {
+      "symbols": [
+        "vm_audio_play_bytes_no_block"
+      ]
+    },
+    "audio_stop": {
+      "symbols": [
+        "vm_audio_stop_all"
+      ]
+    },
+    "audio_playing": {
+      "symbols": [
+        "vm_audio_is_app_playing"
+      ]
+    },
+    "volume": {
+      "symbols": [
+        "vm_set_volume"
+      ]
+    },
+    "log_info": {
+      "slot": 16,
+      "symbols": [
+        "_vm_log_info",
+        "vm_log_info"
+      ]
+    },
+    "log_error": {
+      "slot": 17,
+      "symbols": [
+        "_vm_log_error",
+        "vm_log_error"
+      ]
+    }
+  },
+  "required_groups": {
+    "memory": [
+      "mem_alloc",
+      "mem_realloc",
+      "mem_free"
+    ],
+    "events": [
+      "reg_system",
+      "reg_key"
+    ],
+    "resource": [
+      "res_load"
+    ],
+    "timer": [
+      "timer_create",
+      "timer_delete"
+    ],
+    "layer": [
+      "layer_create",
+      "layer_buffer"
+    ],
+    "draw_any": [
+      "fill_rect",
+      "line"
+    ],
+    "text": [
+      "textout"
+    ],
+    "flush": [
+      "flush"
+    ]
+  },
+  "notes": [
+    "Alias candidates are only valid when they use the same expected C signature.",
+    "Audio uses no alternate blocking/signature alias.",
+    "This model predicts runtime compatibility from an exported-symbol inventory; it does not prove hardware behavior."
+  ]
+}

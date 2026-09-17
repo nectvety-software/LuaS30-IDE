@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Build / local runtime
+build/
+.luas30-tmp/
+*.vxp
+*.axf
+*.o
+*.a
+
+# IDE / OS junk
+.idea/
+.vscode/
+*.log
+*.tmp
+Thumbs.db
+Desktop.ini
+
+# Secrets / local config
+.env
+.env.*
+*.pem
+*.key
+secrets.json
+ai_credentials.json
+
+# Huge bundled binaries (not for a first GitHub push without LFS)
+emulator/
+toolchain/arm-gcc/
+.workbuddy-ai/

@@ -1,0 +1,22 @@
+{
+  "id": "gcc",
+  "name": "ARM GCC (MRE)",
+  "detection": [
+    "arm-none-eabi-gcc",
+    "arm-none-eabi-readelf"
+  ],
+  "compiler_flags": [
+    "-fpic",
+    "-march=armv5te",
+    "-mfloat-abi=soft",
+    "-mlittle-endian",
+    "-Os",
+    "-fvisibility=hidden",
+    "-fdata-sections",
+    "-ffunction-sections",
+    "-std=gnu99",
+    "-D__MRE_COMPILER_GCC__"
+  ],
+  "entry_symbol": "gcc_entry",
+  "status": "bundled-validated-path"
+}

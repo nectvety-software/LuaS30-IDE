@@ -1,0 +1,2 @@
+Apply over LuaS30 Engine v1.11.0 AI Workbench.
+Adds high-compatibility Series 30+ native MRE SDK linking, explicit vm_main, Nokia 225 Dual SIM RM-1011 profile, MRE SDK doctor and optional session-only IMSI-bound install VXP generation.

@@ -1,0 +1,36 @@
+LuaS30 IDE — proprietary notice
+================================
+
+© Qeafivels All rights reserved.
+Website: https://qeafivels.com/
+
+LuaS30 IDE, including its source code, desktop Studio, LuaS30 Native SDK/API,
+build tooling, project templates, documentation and bundled project assets, is
+the property of Qeafivels.
+
+No part of this work may be copied, reproduced, modified, merged, published,
+distributed, sublicensed, sold, or used to create derivative works, in whole or
+in part, by any means, without the prior written permission of Qeafivels.
+
+This notice does not grant any patent, trademark or other intellectual property
+right. "LuaS30" and "LuaS30 IDE" are names used by Qeafivels; the Unicorn Engine
+name and any other third-party names remain the property of their owners.
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+This product uses or bundles third-party components that remain under their own
+licenses. They are NOT covered by the notice above. The authoritative list and
+attribution details are in:
+
+    doc/legal/THIRD_PARTY_NOTICES.md
+
+License and attribution files shipped with each component are authoritative and
+must be preserved when redistributing those components. In particular, the
+bundled Lua 5.1.5 runtime is distributed under the Lua MIT license, whose text is
+at:
+
+    vendor/lua-5.1.5/COPYRIGHT
+
+Detected runtime versions are visible at any time in **About → Environment**.

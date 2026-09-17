@@ -1,0 +1,37 @@
+{
+  "id": "nokia225-rm1011",
+  "name": "Nokia 225 Dual SIM",
+  "rm": "RM-1011",
+  "platform": "Series 30+ / MediaTek MRE",
+  "display": {
+    "width": 240,
+    "height": 320,
+    "orientation": "portrait"
+  },
+  "input": {
+    "keypad": true,
+    "touch": false
+  },
+  "build": {
+    "compiler": "ARM GCC",
+    "cpu": "ARMv5TE",
+    "pic": true,
+    "endianness": "little",
+    "entry_loader": "gcc_entry",
+    "application_entry": "vm_main",
+    "preferred_backend": "s30plus-native",
+    "preferred_ram_kb": 1024,
+    "api": "Audio File ProMng"
+  },
+  "install": {
+    "imsi_binding_typically_required": true,
+    "imsi_prefix9_compat": true,
+    "cert_id": 1
+  },
+  "evidence": [
+    "Public Nokia 225 MRE apps report 240x320 and IMSI signing.",
+    "Current CMake MRE template requires vm_main and uses gcc_entry/scat.ld.",
+    "Current cross-platform MRE makefile links ARM GCC MRE SDK static libraries."
+  ],
+  "status": "high-compatibility profile; physical LuaS30 VXP still requires device smoke test"
+}

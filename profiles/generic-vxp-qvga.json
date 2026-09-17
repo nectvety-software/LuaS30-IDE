@@ -1,0 +1,23 @@
+{
+  "id": "generic-vxp-qvga",
+  "name": "Generic VXP QVGA",
+  "screen": [
+    240,
+    320
+  ],
+  "ram_kb": 1536,
+  "fps": 15,
+  "arch": "armv5te",
+  "float_abi": "soft",
+  "notes": "Baseline profile for VXP-capable 240x320 devices.",
+  "compatibility_status": "UNTESTED",
+  "packaging": {
+    "signing": "none",
+    "binding": null,
+    "policy_note": "The IDE does not sign VXP. Output is unsigned and intended for the emulator/probe; firmware certificate trust cannot be assumed."
+  },
+  "security": {
+    "release_native_strip": true,
+    "lua_protection": "auto"
+  }
+}

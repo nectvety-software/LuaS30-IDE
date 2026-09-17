@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "fixture-minimal-degraded",
+  "label": "Synthetic minimal compatible ABI",
+  "evidence": "fixture",
+  "firmware": "synthetic-minimal",
+  "exports": [
+    "vm_create_timer",
+    "vm_delete_timer",
+    "vm_file_close",
+    "vm_file_delete",
+    "vm_file_getfilesize",
+    "vm_file_open",
+    "vm_file_read",
+    "vm_file_write",
+    "vm_free",
+    "vm_get_system_driver",
+    "vm_graphic_create_layer",
+    "vm_graphic_fill_rect",
+    "vm_graphic_flush_layer",
+    "vm_graphic_get_layer_buffer",
+    "vm_graphic_textout",
+    "vm_load_resource",
+    "vm_malloc",
+    "vm_realloc",
+    "vm_reg_keyboard_callback",
+    "vm_reg_sysevt_callback"
+  ],
+  "expected": {
+    "compatibility_level": "degraded",
+    "final_result": "DEGRADED",
+    "fallback_count_min": 1
+  },
+  "notes": "Synthetic core-only fixture intended to exercise safe fallback paths."
+}

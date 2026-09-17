@@ -1,0 +1,26 @@
+{
+  "id": "rvds",
+  "name": "RVDS / RVCT",
+  "detection": [
+    "armcc",
+    "armlink",
+    "fromelf"
+  ],
+  "compiler_flags": [
+    "-O2",
+    "-g",
+    "--split_sections",
+    "--apcs=/fpic",
+    "--cpu ARM7EJ-S",
+    "--littleend",
+    "-D__MRE_COMPILER_RVCT__"
+  ],
+  "linker_flags": [
+    "--fpic",
+    "--sysv",
+    "--entry rvct_entry",
+    "--first rvct_entry"
+  ],
+  "entry_symbol": "rvct_entry",
+  "status": "compatibility-profile-local-toolchain-required"
+}

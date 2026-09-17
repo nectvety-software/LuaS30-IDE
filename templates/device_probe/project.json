@@ -1,0 +1,18 @@
+{
+  "name": "LuaS30DeviceProbe",
+  "vendor": "LuaS30",
+  "appid": 262568,
+  "ram_kb": 768,
+  "screen_width": 240,
+  "screen_height": 320,
+  "fps": 10,
+  "runtime_target": "mre-s30plus",
+  "single_vxp": true,
+  "compat_profile": "nokia225-rm1011",
+  "mre_api": "File ProMng",
+  "app_version": "1.0.0",
+  "mediatek_chipset": "MTK6260",
+  "mediatek_chipset_label": "MTK6260  (Nokia 220, 225)",
+  "resolution": "240x320",
+  "resolution_label": "240x320  (QVGA - Chuẩn Nokia)"
+}
