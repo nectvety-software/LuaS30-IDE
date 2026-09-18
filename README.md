@@ -3,8 +3,8 @@
 **LuaS30 IDE** là IDE + Native SDK + build pipeline dành cho ứng dụng/game Lua
 chạy theo workflow VXP trên thiết bị S30+/MRE-style.
 
-Bản 1.6.1 là bản cập nhật tài liệu và hướng dẫn phát triển cho kiến trúc
-**LuaS30 Native SDK** của v1.6.
+Bản 1 là bản cập nhật tài liệu và hướng dẫn phát triển cho kiến trúc
+**LuaS30 Native SDK** của v1.
 
 ## Thành phần chính
 
