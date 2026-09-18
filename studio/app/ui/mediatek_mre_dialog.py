@@ -114,7 +114,7 @@ class _TitleBar(QFrame):
 
         icon = QLabel(glyph("settings"))
         icon.setObjectName("MREDialogIcon")
-        icon.setFont(icon_font(16))
+        icon.setFont(icon_font(16, char=glyph("settings")))
         icon.setStyleSheet("color: palette.ACCENT;")
         icon.setFixedSize(32, 32)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)

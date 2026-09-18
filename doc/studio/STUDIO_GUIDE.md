@@ -2,14 +2,65 @@
 
 ## Layout
 
-Studio dùng layout kiểu VS Code:
+Studio uses the VXPEngine chrome (1:1 port in `studio/app/vxpui/`), keeping only
+the Lua build/emulator/project/AI core underneath:
 
 ```text
-Menu Bar
-Activity Bar | Side Bar | Editor Area
-             |          | Bottom Panel
-Status Bar
+CustomTitleBar (31px, frameless) — logo · brand · embedded menu · min/max/close
+Home page (QStackedWidget#MainStack page 0) — project cards
+Editor page (page 1):
+  Toolbar (Run/Stop/Check/Build/Designer)
+  Explorer (DỰ ÁN) | Editor tabs + Bottom panel
+  StatusBar (path, cursor, profile, screen, App ID, version)
+Modal dialog "THIẾT BỊ · VXPEMU" (Devices + Chat AI panels)
+Frameless window "TÀI NGUYÊN · UI DESIGNER" (designer fills it; AssetsView is
+the second tab of the designer's left THÀNH PHẦN dock)
 ```
+
+Facts that are easy to break:
+
+- The window is frameless (`Qt.Window | FramelessWindowHint`, translucent,
+  manual 6px edge resize); the menu bar is a real `QMenuBar#MainMenuBar`
+  embedded inside `CustomTitleBar` and hidden on the Home page.
+- Menu look comes ONLY from `app/vxpui/resources/dark_theme.qss`. The old
+  generic `QMenuBar { min-height: 26px }` rules in `app/ui/theme.py` were
+  removed on purpose: Qt propagates `min-height` to `::item`, and with
+  `APP_STYLE + dark_theme.qss` merged as one sheet every menu item grew to
+  36px > the 31px bar, so ALL menus collapsed into an unpainted ">>" overflow.
+- Global stylesheet = `APP_STYLE + "\n" + dark_theme.qss` (APP_STYLE keeps
+  objectName rules for reused views; dark_theme wins generic selectors).
+- Bottom panel is ALWAYS hidden at startup (VXPEngine parity); its remembered
+  height/active tab and all splitter sizes persist via
+  `workspace_session.json` (`WorkspaceSessionStore`).
+- `_enter_editor()` refuses without an open project — Home is the only
+  project-less surface; tool tabs (Settings, Project Hub, doctors) live on the
+  editor page.
+- The Devices/AI column is NOT a workspace column anymore: `VxpMainWindow.
+  _build_device_dialog()` packs `RightWorkspaceColumn` (device panel + CHAT AI
+  panel) into an application-modal `CustomDialog` opened from the "Công cụ"
+  menu ("Thiết bị · VXPEmu", Ctrl+Alt+D) or via `_set_ai_visible(True)`
+  (Chat AI toggle, Ctrl+Alt+I, "Ask AI" from the console). The dialog's X
+  hides it (`set_close_handler(dialog.hide)`) so the embedded EmulatorView is
+  never destroyed; the workspace splitter therefore has exactly 2 children.
+- The TÀI NGUYÊN panel is NOT in the left column anymore either:
+  `app/vxpui/assets_studio_window.py` defines `AssetsStudioWindow`, a separate
+  frameless top-level window (own `CustomTitleBar`, own menu bar
+  "Tài nguyên / Thiết kế / Cửa sổ", own `WindowStateController` geometry keys
+  under `vxpui/assets_studio/`, 6px edge resize). The UI Designer fills the
+  whole window — its own "THÀNH PHẦN" palette is the left column. `AssetsView`
+  lives in an application-modal `CustomDialog` picker ("TÀI NGUYÊN · ASSETS",
+  opened from the studio window's "Tài nguyên → Chọn / quản lý tài nguyên…",
+  Ctrl+Alt+R): pick an image and "Chèn vào giữa màn hình" places it on the
+  canvas via `designer.place_project_image()` and hides the dialog; importing
+  new files syncs them into the palette immediately
+  (`_PickerAssetsView.changed` → `sync_project_assets`) so drag-drop from
+  "THÀNH PHẦN" is one step away. The two-tab `QTabWidget` dock that used to
+  squeeze this panel was removed — it rendered clipped in the real app. The
+  window is opened by the "Công cụ" menu
+  ("Tài nguyên · UI Designer", Ctrl+Alt+U) or the toolbar Designer button
+  (`_open_designer()` no longer creates a tool tab). Closing the window hides
+  it so unsaved designs survive; app exit still auto-saves via `closeEvent`
+  reading `self.assets_studio.designer`.
 
 ## Explorer
 
@@ -317,8 +368,21 @@ Segoe UI Symbol (fallback)
 
 No icon font file is bundled with or exported from the engine package.
 
+Two layers exist. The chrome (`app/vxpui/icons.py`) asks QtAwesome for
+`fa5s.*` glyphs; if QtAwesome is missing or its Font Awesome fonts fail to
+load (packaged builds), every name falls back through `_FA5_TO_GLYPH` to the
+Segoe glyph renderer above, so title-bar/toolbar buttons are never blank.
+`tools/validate_icon_fonts.py` pins: all fa names used in source render
+non-null both normally AND with `qta` monkeypatched to `None`, every fallback
+key exists in `GLYPHS`, and every `GLYPHS` codepoint is present in a real
+system font cmap (per-glyph font selection via `_family_for_char`).
+
 
 ## Compact Workbench 1.7
+
+> Historical: describes the pre-VXPEngine QMainWindow shell (deleted
+> `studio/app/ui/main_window.py`). The command/service ownership below still
+> applies; only the chrome diagram is obsolete.
 
 The workbench removes duplicate pages and commands.
 
@@ -342,8 +406,8 @@ Canonical ownership:
   Tự động cài đặt buttons. Rerun anytime from Tools menu.
   Backed by `studio/app/services/environment_setup.py`; VC++ runtime installs
   via `tools/install_vc_runtime.py`. Never blocks IDE startup.
-- Integrated terminal autostarts hidden in the background at launch
-  (`autostart_background`, no focus steal, no Enter needed).
+- Integrated terminal never autostarts: the shell (cmd.exe / sh) only launches
+  when the user opens the TERMINAL panel explicitly.
 - About menu: documentation, environment and credits.
 
 The former Dashboard, Projects, Build and standalone Console pages are not part of
@@ -360,11 +424,26 @@ manifest VXP path and expected SHA-256.
 The Emulator view displays the actual VXP artifact/hash/process metadata; it no
 longer shows a decorative fake device preview.
 
+On Windows, a successful launch also opens the Nokia 225 Dual SIM shell
+(`studio/app/widgets/vxp_emu_window.py`, modeled on VXPEngine's VXPEmu chrome):
+the real `VXPEmu.exe` window is found by PID and embedded into the 240×320
+screen via Win32 `SetParent` (`studio/app/core/native_window.py`). The shell
+provides the MRE keypad, run/stop, loading another `.vxp` (re-hashed and
+SHA-verified through the same runner), screenshot, MP4 recording when ffmpeg is
+on PATH, portrait/landscape rotation and fullscreen. `tools/run_emulator.py`
+launches VXPEmu with `--autostart --testapi --screen-only` (same contract as
+VXPEngine), so only the bare 240×320 framebuffer window is embedded — the
+emulator's own toolbars and title bar never appear inside the shell.
+
 `Project Doctor` validates project.json, entry script, target profile, RAM/FPS
 hints, asset payload and the SHA of the previous build.
 
 
 ## Tabbed Workbench 1.9
+
+> Historical chrome diagram (Activity Bar); the tab model itself — one strip
+> for files + tool tabs, focus-instead-of-duplicate — is still what
+> `EditorGroupManager` implements inside the editor page.
 
 Studio uses one central editor tab strip for both files and tools, matching the behavior
 of VS Code custom/editor tabs more closely.

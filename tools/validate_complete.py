@@ -2,8 +2,8 @@ from pathlib import Path
 import ast,sys
 ROOT=Path(__file__).resolve().parent.parent
 required=[
- 'run.bat','build.bat','build_only.bat','studio/main.py','studio/app/ui/main_window.py',
- 'studio/app/views/code_editor_view.py','studio/app/editor/explorer_panel.py','studio/app/editor/project_tree.py',
+ 'run.bat','build.bat','build_only.bat','studio/main.py','studio/app/vxpui/main_window.py',
+ 'studio/app/vxpui/main_window.py','studio/app/editor/explorer_panel.py','studio/app/editor/project_tree.py',
  'studio/app/views/assets_view.py','studio/app/views/ui_designer_view.py',
  'sdk/luas30/include/ls30/api.h','sdk/luas30/src/abi_resolver.c','sdk/luas30/src/api.c',
  'engine/src/runtime_entry.c','engine/src/runtime_bridge.c','engine/src/runtime_lua.c',

@@ -364,13 +364,6 @@ class IntegratedTerminal(QWidget):
                 self.surface.show_prompt(self._prompt())
             self.surface.setFocus(Qt.FocusReason.OtherFocusReason)
 
-    def autostart_background(self) -> None:
-        """Tu chay shell khi Studio mo xong: nen, an, khong can Enter."""
-        try:
-            self.ensure_started(focus=False)
-        except Exception:
-            pass
-
     def start_terminal(self, focus: bool = True) -> None:
         if self.running:
             return

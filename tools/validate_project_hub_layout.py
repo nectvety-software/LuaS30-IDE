@@ -3,37 +3,26 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 errors=[]
 
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
-editor=(ROOT/"studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
+editor=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 
 for token in (
     'VERSION = "1.0.1"',
-    "self.activity_bar = self._build_activity_bar()",
-    "def _set_project_hub_mode",
-    'key in {"welcome", "projects"}',
-    "self.activity_bar.setVisible((not enabled) and bool(self._editor_activity_bar_visible))",
-    "self.editor_view.set_hub_mode(enabled)",
+    'self.stack.setObjectName("MainStack")',
+    "def _show_home",
+    "def _enter_editor",
+    "self.title_bar.set_home_mode(True)",
+    "self.title_bar.set_home_mode(False)",
+    "self.home_page.set_projects(self.project_library.scan())",
 ):
     if token not in main:
-        errors.append("MainWindow missing Project Hub rule: "+token)
+        errors.append("MainWindow missing home-page mode rule: "+token)
 
-for token in (
-    "def set_hub_mode",
-    "_editor_sidebar_visible",
-    "_editor_bottom_visible",
-    "_editor_find_visible",
-    "self.left_tabs.hide()",
-    "self.bottom.hide()",
-    "self.find_bar.hide()",
-):
-    if token not in editor:
-        errors.append("CodeEditorView missing Project Hub state: "+token)
-
-# Session state must use desired editor visibility, not physical hub visibility.
-if '"visible": bool(self._editor_sidebar_visible)' not in editor:
-    errors.append("sidebar session state is still tied to physical hub visibility")
-if '"visible": bool(self._editor_bottom_visible)' not in editor:
-    errors.append("panel session state is still tied to physical hub visibility")
+# Session state must use desired editor visibility, not physical page state.
+if '"visible": bool(self._console_visible)' not in editor:
+    errors.append("panel session state is not persisted from desired visibility")
+if '"height": int(self._console_last_height)' not in editor:
+    errors.append("bottom panel preferred height is not persisted")
 
 # Project Hub: cây thư mục bên trái + bảng bên phải, và nền của chính QHeaderView.
 manager=(ROOT/"studio/app/views/project_manager_view.py").read_text(encoding="utf-8")

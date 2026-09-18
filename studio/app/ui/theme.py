@@ -50,17 +50,9 @@ QWidget {
     font-family: "Segoe UI", Arial, sans-serif;
     font-size: 12px;
 }
-QMenuBar {
-    background: @BG_INK;
-    color: @TEXT_2;
-    border-bottom: 1px solid @BORDER;
-    padding-left: 4px;
-    min-height: 26px;
-}
-QMenuBar::item { padding: 5px 8px; background: transparent; }
-QMenuBar::item:selected { background: @BG_HOVER; color: @TEXT; }
-/* Cụm nút công cụ ở góc phải hàng menu: trong suốt để hoà vào nền menu bar. */
-QFrame#MenuToolsCluster { background: transparent; border: 0; }
+/* QMenuBar được nhúng trong CustomTitleBar (31px) do dark_theme.qss
+   (#MainMenuBar) đảm nhận hoàn toàn; rule chung ở đây từng bump min-height
+   xuống ::item khiến mọi menu tràn vào nút ">>". */
 QMenu {
     background: @BG_RAISED;
     color: @TEXT_2;
@@ -483,6 +475,26 @@ QListWidget#RecentProjects::item:hover {
     background: @BG_RAISED;
 }
 QListWidget#RecentProjects::item:selected {
+    background: @BG_SELECT;
+    color: @TEXT;
+}
+QLabel#RecentProjectName {
+    color: @TEXT;
+    font-size: 12px;
+    font-weight: 600;
+}
+QLabel#RecentProjectPath {
+    color: @TEXT_5;
+    font-size: 10px;
+}
+QToolButton#RecentProjectMenu {
+    color: @TEXT_3;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    padding: 3px;
+}
+QToolButton#RecentProjectMenu:hover {
     background: @BG_SELECT;
     color: @TEXT;
 }

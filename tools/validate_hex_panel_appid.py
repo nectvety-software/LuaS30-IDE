@@ -12,7 +12,7 @@ errors=[]
 
 bottom=(ROOT/"studio/app/widgets/bottom_panel.py").read_text(encoding="utf-8")
 terminal=(ROOT/"studio/app/widgets/terminal_view.py").read_text(encoding="utf-8")
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 session=(ROOT/"studio/app/core/project_session.py").read_text(encoding="utf-8")
 library=(ROOT/"studio/app/services/project_library.py").read_text(encoding="utf-8")
 
@@ -47,7 +47,8 @@ for token in ("_prompt_format","_input_format","_error_format","_success_format"
         errors.append("Terminal colors missing: "+token)
 
 for token in (
-    "self.editor_view.show_hex(vxp)",
+    "self.bottom.show_hex(vxp)",
+    "self.bottom.hex_view.set_file(vxp)",
     "HEX loaded",
     'VERSION = "1.0.1"',
 ):

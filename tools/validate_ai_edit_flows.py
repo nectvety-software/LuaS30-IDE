@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT / "studio"))
 from app.services.ai_agent_protocol import CodeEditAction
 from app.services.ai_change_service import AIChangeService
 
-editor_source = (ROOT / "studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
+editor_source = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 chat_source = (ROOT / "studio/app/views/ai_chat_view.py").read_text(encoding="utf-8")
 
 # Ask-before-changes flow: prepare must not touch disk; Apply Code writes atomically.

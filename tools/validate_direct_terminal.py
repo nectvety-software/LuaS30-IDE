@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 terminal=(ROOT/"studio/app/widgets/terminal_view.py").read_text(encoding="utf-8")
 theme=(ROOT/"studio/app/ui/theme.py").read_text(encoding="utf-8")
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 errors=[]
 
 for token in (

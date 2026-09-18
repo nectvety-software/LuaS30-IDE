@@ -75,6 +75,14 @@ class ProjectLibraryService:
                 found.append(self.inspect(project_root))
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 continue
+        # Mot project con nam trong project khac (vi du ban sao trong release/)
+        # khong phai project doc lap — chi giu project ngoai cung.
+        roots = [record.root for record in found]
+        found = [
+            record for record in found
+            if not any(other != record.root and record.root.is_relative_to(other)
+                       for other in roots)
+        ]
         found.sort(key=lambda item: item.modified, reverse=True)
         return found
 

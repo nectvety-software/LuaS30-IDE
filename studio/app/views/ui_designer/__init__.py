@@ -28,7 +28,7 @@ quy ước của LuaS30 Studio:
 
 from .designer_view import UIDesignerWidget
 
-# Tên cũ mà `app/ui/main_window.py` đang import.
+# Tên cũ mà `app/vxpui/main_window.py` đang import.
 UIDesignerView = UIDesignerWidget
 
 __all__ = ["UIDesignerWidget", "UIDesignerView"]

@@ -7,16 +7,16 @@ Chạy:
     QT_QPA_PLATFORM=offscreen QT_QPA_FONTDIR="C:/Windows/Fonts" \
         py -3.12 -u tools/validate_project_hub_ui.py
 
-Dựng THẬT `MainWindow` rồi mở Project Hub, trong sandbox tạm nên không đụng
-config thật của người dùng. Kiểm:
+Dựng THẬT `ProjectManagerView` (view mà VxpMainWindow mở trong tab "projects")
+trong sandbox tạm nên không đụng config thật của người dùng. Kiểm:
 
   * cây thư mục nằm BÊN TRÁI bảng và cùng một splitter; gốc cây là kho project;
   * bấm một thư mục trong cây thì bảng chọn đúng project tương ứng — kể cả khi
     bấm vào thư mục CON của project (bấm `<project>/build` phải chọn `<project>`);
   * không có khối sáng 24px và không có DẢI sáng mỏng. Dải trắng bên phải hàng
-    tiêu đề bảng từng lọt qua phép quét khối, vì hàng tiêu đề chỉ cao ~29px nên
+    tiêu đề từng lọt qua phép quét khối, vì hàng tiêu đề chỉ cao ~29px nên
     không khối 24px nào nằm trọn trong đó;
-  * vùng tiêu đề nằm SAU cột cuối phải là màu nền đậm, không phải palette mặc
+  * vùng tiêu đề nằm SAU cột cuối phải là màu đậm, không phải palette mặc
     định (sáng) — đây chính là lỗi gốc.
 
 Phép quét dùng chung `light_blocks` / `light_bands` với `studio_theme_check.py`
@@ -48,8 +48,6 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 def main() -> int:
     sandbox = Path(tempfile.mkdtemp(prefix="luas30_hub_ui_"))
     projects = sandbox / "projects"
-    os.environ["LUAS30_APPDATA"] = str(sandbox / "appdata")
-    os.environ["LUAS30_PROJECTS"] = str(projects)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("QT_QPA_FONTDIR", "C:/Windows/Fonts")
 
@@ -63,24 +61,29 @@ def main() -> int:
         (root / "main.lua").write_text(f"-- {name}\n", encoding="utf-8")
 
     from PySide6.QtCore import QPoint
-    from PySide6.QtWidgets import QApplication, QSplitter
+    from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
 
     import studio_theme_check as H
-    from app.ui.main_window import MainWindow
+    from app.services.project_library import ProjectLibraryService
     from app.ui.theme import APP_STYLE
+    from app.views.project_manager_view import ProjectManagerView
 
     print(f"config tạm: {sandbox}", flush=True)
 
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setStyleSheet(APP_STYLE)
+    qss = ROOT / "studio" / "app" / "vxpui" / "resources" / "dark_theme.qss"
+    app.setStyleSheet(APP_STYLE + "\n" + qss.read_text(encoding="utf-8"))
 
-    window = MainWindow(engine_root=ROOT)
-    window.resize(1440, 860)
-    window.show()
-    window.ensurePolished()
-    app.processEvents()
-
-    view = window._open_project_storage()
+    service = ProjectLibraryService(projects, ROOT / "templates" / "basic")
+    host = QWidget()
+    host.setObjectName("RootFrame")
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(0, 0, 0, 0)
+    view = ProjectManagerView(service)
+    layout.addWidget(view)
+    host.resize(1600, 760)  # rộng hơn tổng cột (1075px) để còn dải "sau cột cuối" mà lấy mẫu
+    host.show()
+    view.refresh()
     app.processEvents()
 
     print("\n-- A. cây thư mục bên trái --", flush=True)
@@ -132,7 +135,7 @@ def main() -> int:
           str(view.selected_path()))
 
     print("\n-- D. không rò theme sáng --", flush=True)
-    pixmap = window.grab()
+    pixmap = host.grab()
     blocks = H.light_blocks(pixmap)
     check("không có khối sáng 24px", not blocks, f"hits={blocks[:6]}")
     bands = H.light_bands(pixmap)
@@ -141,22 +144,29 @@ def main() -> int:
     header = table.horizontalHeader()
     total = sum(table.columnWidth(c) for c in range(table.model().columnCount()))
     image = pixmap.toImage()
-    offset = header.mapTo(window, QPoint(0, 0))
+    offset = header.mapTo(host, QPoint(0, 0))
     y = offset.y() + header.height() // 2
-    samples = {
+    colors = {
         image.pixelColor(x, y).name()
         for x in range(offset.x() + total + 10,
                        min(pixmap.width() - 5, offset.x() + table.width()), 40)
     }
+    # Nền thật đến từ dark_theme.qss (hợp nhất với APP_STYLE lúc chạy), nên chỉ
+    # kiểm độ TỐI thay vì so hex cố định — đổi palette không làm hỏng validator.
+    def _is_dark(name: str) -> bool:
+        rgb = (int(name[1:3], 16), int(name[3:5], 16), int(name[5:7], 16))
+        return max(rgb) < 100
+
+    dark = colors and all(_is_dark(c) for c in colors)
     check("tiêu đề sau cột cuối là nền đậm",
-          samples == {"#07101f"}, f"cols={samples or 'không lấy được mẫu'}")
+          dark, f"cols={sorted(colors)} (mong tối)")
 
     print("\n-- E. tiêu đề bảng dùng nền của chính QHeaderView --", flush=True)
     theme = (ROOT / "studio/app/ui/theme.py").read_text(encoding="utf-8")
     check("theme.py có rule nền QHeaderView (không chỉ ::section)",
           "QHeaderView {" in theme)
 
-    window.close()
+    host.close()
     print()
     if FAILS:
         print("FAIL", flush=True)

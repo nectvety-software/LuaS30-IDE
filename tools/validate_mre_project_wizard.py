@@ -5,7 +5,7 @@ import json
 ROOT = Path(__file__).resolve().parent.parent
 errors = []
 
-main = (ROOT / 'studio/app/ui/main_window.py').read_text(encoding='utf-8')
+main = (ROOT / 'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
 dialog = (ROOT / 'studio/app/ui/mediatek_mre_dialog.py').read_text(encoding='utf-8')
 session = (ROOT / 'studio/app/core/project_session.py').read_text(encoding='utf-8')
 build = (ROOT / 'tools/build.py').read_text(encoding='utf-8')
@@ -81,7 +81,7 @@ for key in ('app_version', 'mediatek_chipset', 'resolution', 'ram_kb'):
 for path in (
     ROOT / 'studio/app/ui/mediatek_mre_dialog.py',
     ROOT / 'studio/app/core/project_session.py',
-    ROOT / 'studio/app/ui/main_window.py',
+    ROOT / 'studio/app/vxpui/main_window.py',
     ROOT / 'tools/build.py',
 ):
     try:

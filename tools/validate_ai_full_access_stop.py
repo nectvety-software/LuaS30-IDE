@@ -2,7 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 chat = (ROOT / "studio/app/views/ai_chat_view.py").read_text(encoding="utf-8")
-editor = (ROOT / "studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
+editor = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 terminal = (ROOT / "studio/app/widgets/terminal_view.py").read_text(encoding="utf-8")
 protocol = (ROOT / "studio/app/services/ai_agent_protocol.py").read_text(encoding="utf-8")
 provider = (ROOT / "studio/app/services/ai_provider_service.py").read_text(encoding="utf-8")

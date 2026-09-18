@@ -9,7 +9,7 @@ compat=(ROOT/"tools/s30plus_compat.py").read_text(encoding="utf-8")
 entry=(ROOT/"engine/src/runtime_entry.c").read_text(encoding="utf-8")
 settings=(ROOT/"studio/app/views/settings_view.py").read_text(encoding="utf-8")
 service=(ROOT/"studio/app/services/build_service.py").read_text(encoding="utf-8")
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 
 for token in (
     '"s30plus-native"',

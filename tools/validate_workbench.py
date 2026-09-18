@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-mw = (ROOT / "studio/app/ui/main_window.py").read_text(encoding="utf-8")
+mw = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 errors = []
 
 for forbidden_import in (

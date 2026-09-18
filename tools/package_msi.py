@@ -307,8 +307,9 @@ def build_msi(out_dir: Path, skip_optional: bool = False) -> Path:
         for dir_id, items in sorted(dir_to_components.items(), key=lambda kv: kv[0]):
             a(f'    <DirectoryRef Id="{dir_id}">')
             for _d, cid, fid, rel_path, rel in items:
+                source_rel = escape(rel.replace("/", "\\"))
                 a(f'      <Component Id="{cid}" Guid="{_guid()}">')
-                a(f'        <File Id="{fid}" Name="{escape(rel_path.name)}" Source="source\\{escape(rel.replace("/", "\\"))}" KeyPath="yes"/>')
+                a(f'        <File Id="{fid}" Name="{escape(rel_path.name)}" Source="source\\{source_rel}" KeyPath="yes"/>')
                 a('      </Component>')
             a('    </DirectoryRef>')
 

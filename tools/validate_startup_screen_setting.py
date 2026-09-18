@@ -4,8 +4,7 @@ ROOT=Path(__file__).resolve().parent.parent
 errors=[]
 
 settings=(ROOT/"studio/app/views/settings_view.py").read_text(encoding="utf-8")
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
-start=(ROOT/"studio/app/views/start_page_view.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 groups=(ROOT/"studio/app/editor/editor_group_manager.py").read_text(encoding="utf-8")
 
 for token in (
@@ -26,16 +25,11 @@ for token in (
     'self._startup_mode == "project_hub"',
     'self._startup_mode == "empty_editor"',
     '"mode": self._startup_mode',
-    "restore_tool_tabs=(self._startup_mode != \"empty_editor\")",
+    'if self._startup_mode != "empty_editor":',
     "def _set_startup_mode",
 ):
     if token not in main:
         errors.append("MainWindow missing startup-mode contract: "+token)
-
-if "Show Welcome page on startup" in start:
-    errors.append("Welcome still contains the deprecated duplicate startup checkbox")
-if "show_on_startup_changed" in start:
-    errors.append("Welcome still exposes deprecated show_on_startup signal")
 
 if "def show_empty_editor" not in groups:
     errors.append("Editor group manager has no empty-editor startup operation")

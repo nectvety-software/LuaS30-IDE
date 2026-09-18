@@ -668,6 +668,31 @@ class UIDesignerWidget(QWidget):
         if self._require_project():
             self._run_import(KIND_AUDIO)
 
+    def place_project_image(self, path) -> bool:
+        """Hộp thoại TÀI NGUYÊN chọn ảnh → đăng ký nếu thiếu rồi đặt vào canvas.
+
+        Trả False khi tệp không phải ảnh trong project (icon chưa tải, pdf,
+        nhạc…) — người gọi chịu trách nhiệm báo cho người dùng biết.
+        """
+        if self.store.root is None or not self.store.root.is_dir():
+            return False
+        try:
+            rel = Path(path).resolve().relative_to(
+                self.store.root.resolve()).as_posix()
+        except (OSError, ValueError):
+            return False
+        if image_for_src(rel) is None:
+            self.sync_project_assets()
+        entry = image_for_src(rel)
+        if entry is None:
+            return False
+        self.scene.add_token_centered(image_token(entry["key"]))
+        self.view.setFocus()
+        self._refresh_breadcrumb()
+        self.logMessage.emit(
+            f"[UI DESIGNER] Đã đặt '{entry['title']}' lên canvas")
+        return True
+
     def _on_widget_added(self, _item):
         """Kéo-thả xong: cập nhật breadcrumb để người dùng biết màn hình đã đổi."""
         self._refresh_breadcrumb()

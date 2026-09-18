@@ -1,14 +1,23 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-source = (ROOT / 'studio/app/views/code_editor_view.py').read_text(encoding='utf-8')
+source = (ROOT / 'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
 
 checks = {
-    'Explorer has a remembered non-zero width': 'DEFAULT_SIDEBAR_WIDTH = 220' in source and 'self._sidebar_width' in source,
-    'Explorer splitter pane cannot be permanently collapsed by drag': 'self.workspace.setCollapsible(0, False)' in source,
-    'Explorer activation repairs a zero-width splitter': 'QTimer.singleShot(0, self._apply_sidebar_width)' in source and 'def _apply_sidebar_width' in source,
-    'Workspace restore sanitizes a saved zero width': 'restored[0] < self.MIN_SIDEBAR_WIDTH' in source,
-    'Explorer width is persisted separately from raw splitter sizes': '"preferred_width": int(self._sidebar_width)' in source,
+    'Explorer column has a declared minimum width':
+        'LEFT_COLUMN_MIN_WIDTH = 190' in source
+        and 'left_column.setMinimumWidth(190)' in source,
+    'Explorer splitter pane cannot be permanently collapsed by drag':
+        'split.setChildrenCollapsible(False)' in source,
+    'Workspace restore repairs a zero-width saved column':
+        'def _restore_workspace_layout_state' in source
+        and 'if restored and restored[0] < minimum:' in source,
+    'Workspace restore sanitizes a saved zero width':
+        'restored = [max(0, int(value)) for value in sizes]' in source,
+    'Workspace sizes are persisted alongside raw panel state':
+        '"sizes": self.workspace_split.sizes()' in source,
+    'Splitter drags schedule a workspace session save':
+        'pane.splitterMoved.connect' in source,
 }
 
 failed = False

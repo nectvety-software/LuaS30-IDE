@@ -4,7 +4,7 @@ ui_designer_view.py — Điểm vào của tab UI Designer.
 Bản đầu tiên (v1.7.0) là một designer tối giản nằm gọn trong tệp này: 5 loại
 thành phần, kéo thả cơ bản, lưu `.luas30/ui_design.json`. Nay UI Designer đầy
 đủ nằm trong package `app/views/ui_designer/`, nên tệp này chỉ còn là lớp mỏng
-giữ nguyên API mà `app/ui/main_window.py` đang dùng:
+giữ nguyên API mà `app/vxpui/main_window.py` đang dùng:
 
     from app.views.ui_designer_view import UIDesignerView
     view = UIDesignerView()

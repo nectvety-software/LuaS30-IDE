@@ -10,15 +10,15 @@ required=(
 for rel in required:
     if not (ROOT/rel).is_file(): errors.append("missing: "+rel)
 
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
-view=(ROOT/"studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
+view=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 panel=(ROOT/"studio/app/widgets/bottom_panel.py").read_text(encoding="utf-8")
 terminal=(ROOT/"studio/app/widgets/terminal_view.py").read_text(encoding="utf-8")
 
-for token in ('Toggle Console','Toggle Terminal','New Terminal','menu.addMenu("Terminal")','VERSION = "1.0.1"'):
+for token in ('Bảng dưới (Console / Problems / Terminal)','Ctrl+J','Terminal','Ctrl+`','VERSION = "1.0.1"'):
     if token not in main: errors.append("MainWindow missing: "+token)
-for token in ('def toggle_console','def toggle_terminal','def new_terminal','"active_key"'):
-    if token not in view: errors.append("CodeEditorView missing: "+token)
+for token in ('def _toggle_console_panel','def _show_terminal_panel','terminal_action.triggered.connect(self._show_terminal_panel)','"active_key"'):
+    if token not in view: errors.append("MainWindow panel wiring missing: "+token)
 for token in ('"CONSOLE"','"TERMINAL"','IntegratedTerminal','self.output = self.console'):
     if token not in panel: errors.append("BottomPanel missing: "+token)
 for token in ('QProcess','cmd.exe','command_submitted','def kill_terminal','def new_terminal'):

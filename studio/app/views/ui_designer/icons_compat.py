@@ -57,11 +57,12 @@ def _glyph_pixmap(name: str, size: int, color: str) -> QPixmap:
     painter.setPen(QColor(color))
     from app.ui.icons import icon_font
 
-    painter.setFont(icon_font(max(9, int(size * 0.94))))
+    ch = glyph(name)
+    painter.setFont(icon_font(max(9, int(size * 0.94)), char=ch))
     painter.drawText(
         0, 0, size, size,
         int(Qt.AlignmentFlag.AlignCenter),
-        glyph(name),
+        ch,
     )
     painter.end()
     return px

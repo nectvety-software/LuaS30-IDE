@@ -1,4 +1,4 @@
-"""Validate hop thoai thiet lap lan dau + terminal autostart."""
+"""Validate hop thoai thiet lap lan dau + policy terminal khong tu chay."""
 from pathlib import Path
 import sys
 ROOT=Path(__file__).resolve().parent.parent
@@ -23,9 +23,12 @@ for t in ('class Requirement','def detect_missing','def installable','def is_fir
 for t in ('vc_redist','aka.ms', '--check'):
     has('tools/install_vc_runtime.py',t)
 for t in ('first_run_setup_action','Chạy lại thiết lập lần đầu','_run_first_run_setup',
-          '_maybe_first_run_setup','_autostart_terminal','singleShot(800','singleShot(900'):
-    has('studio/app/ui/main_window.py',t)
-for t in ('autostart_background', 'def ensure_started(self, focus', 'def show_prompt(self, prompt:'):
+          '_maybe_first_run_setup','singleShot(800'):
+    has('studio/app/vxpui/main_window.py',t)
+for banned in ('_autostart_terminal','autostart_background'):
+    data=(ROOT/'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
+    if banned in data:errors.append(f'studio/app/vxpui/main_window.py van con {banned!r}')
+for t in ('def ensure_started(self, focus', 'def show_prompt(self, prompt:'):
     has('studio/app/widgets/terminal_view.py',t)
 print('validate_setup_dialog:', 'PASS' if not errors else 'FAIL')
 for e in errors:print(' -',e)

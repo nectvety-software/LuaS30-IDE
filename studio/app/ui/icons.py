@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -46,7 +47,7 @@ GLYPHS: dict[str, str] = {
     "open_external": "",
     "collapse": "",
     "expand": "",
-    "delete": "",
+    "delete": "",
     "undo": "",
     "redo": "",
     "select_all": "",
@@ -75,6 +76,19 @@ GLYPHS: dict[str, str] = {
     "pointer": "",
     "text_style": "",
     "music": "",
+    "minus": "",
+    "gamepad": "",
+    "users": "",
+    "robot": "",
+    "brush": "",
+    "power": "",
+    "circle": "",
+    "bell": "",
+    "library": "",
+    "download": "",
+    "microchip": "",
+    "square": "",
+    "location": "",
 }
 
 
@@ -108,8 +122,95 @@ def icon_font_family() -> str:
     return "Segoe UI Symbol"
 
 
-def icon_font(pixel_size: int = 18) -> QFont:
-    font = QFont(icon_font_family())
+# Mã PUA của Segoe (E1xx/E7xx/E8xx...) KHÔNG có mặt đầy đủ trong mọi font ứng
+# viên: "Segoe UI Symbol" thiếu gần hết, "Segoe Fluent Icons" (Win11) vắng một
+# vài mã cũ. Chọn font THEO TỪNG GLYPH bằng cách đọc cmap trực tiếp từ TTF hệ
+# thống — đáng tin hơn QFontDatabase.families() (lỗi/offscreen hay sai).
+_FAMILY_FILES = {
+    "Segoe Fluent Icons": "segoefluenticons.ttf",
+    "Segoe MDL2 Assets": "segmdl2.ttf",
+    "Segoe UI Symbol": "segoesym.ttf",
+}
+
+
+def _cmap_codepoints(data: bytes) -> set[int]:
+    import struct
+
+    num = struct.unpack(">H", data[4:6])[0]
+    tables = {}
+    for i in range(num):
+        tag = data[12 + 16 * i:16 + 16 * i]
+        off, ln = struct.unpack(">II", data[20 + 16 * i:28 + 16 * i])
+        tables[tag.decode("latin-1")] = off
+    off = tables["cmap"]
+    n = struct.unpack(">H", data[off + 2:off + 4])[0]
+    have: set[int] = set()
+    for i in range(n):
+        pid, eid, so = struct.unpack(">HHI", data[off + 4 + 8 * i:off + 12 + 8 * i])
+        if (pid, eid) not in ((3, 1), (3, 10), (0, 3), (0, 4)):
+            continue
+        s = off + so
+        fmt = struct.unpack(">H", data[s:s + 2])[0]
+        if fmt == 4:
+            segx2 = struct.unpack(">H", data[s + 6:s + 8])[0]
+            seg = segx2 // 2
+            ends = struct.unpack(f">{seg}H", data[s + 14:s + 14 + segx2])
+            starts = struct.unpack(f">{seg}H", data[s + 16 + segx2:s + 16 + 2 * segx2])
+            deltas = struct.unpack(f">{seg}h", data[s + 16 + 2 * segx2:s + 16 + 3 * segx2])
+            rpos = s + 16 + 3 * segx2
+            ranges = struct.unpack(f">{seg}H", data[rpos:rpos + segx2])
+            for k in range(seg):
+                for c in range(starts[k], min(ends[k], 0xFFFE) + 1):
+                    if ranges[k] == 0:
+                        gid = (c + deltas[k]) & 0xFFFF
+                    else:
+                        addr = rpos + 2 * k + ranges[k] + 2 * (c - starts[k])
+                        if addr + 2 > len(data):
+                            continue
+                        gid = struct.unpack(">H", data[addr:addr + 2])[0]
+                        if gid:
+                            gid = (gid + deltas[k]) & 0xFFFF
+                    if gid:
+                        have.add(c)
+        elif fmt == 12:
+            ng = struct.unpack(">I", data[s + 12:s + 16])[0]
+            for g in range(ng):
+                sc, ec, sg = struct.unpack(">III", data[s + 16 + 12 * g:s + 28 + 12 * g])
+                have.update(c for c in range(sc, ec + 1) if sg + (c - sc))
+        elif fmt == 6:
+            first, cnt = struct.unpack(">HH", data[s + 6:s + 10])
+            have.update(first + j for j in range(cnt) if data[s + 10 + j])
+    return have
+
+
+@lru_cache(maxsize=8)
+def _family_codepoints(family: str) -> frozenset[int]:
+    fname = _FAMILY_FILES.get(family)
+    if not fname or sys.platform != "win32":
+        return frozenset()
+    import os
+
+    base = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    path = base / fname
+    try:
+        return frozenset(_cmap_codepoints(path.read_bytes()))
+    except (OSError, KeyError, ValueError, IndexError):
+        return frozenset()
+
+
+@lru_cache(maxsize=256)
+def _family_for_char(char: str) -> str:
+    cp = ord(char)
+    for family in FONT_CANDIDATES:
+        codepoints = _family_codepoints(family)
+        if codepoints and cp in codepoints:
+            return family
+    return icon_font_family()
+
+
+def icon_font(pixel_size: int = 18, char: str | None = None) -> QFont:
+    family = _family_for_char(char) if char else icon_font_family()
+    font = QFont(family)
     font.setPixelSize(pixel_size)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
     return font
@@ -129,11 +230,12 @@ def _glyph_pixmap(name: str, size: int, color: str) -> QPixmap:
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
     painter.setPen(QColor(resolve_color(color)))
-    painter.setFont(icon_font(max(10, int(size * 0.95))))
+    ch = glyph(name)
+    painter.setFont(icon_font(max(10, int(size * 0.95)), char=ch))
     painter.drawText(
         QRect(0, 0, size, size),
         int(Qt.AlignmentFlag.AlignCenter),
-        glyph(name),
+        ch,
     )
     painter.end()
     return px

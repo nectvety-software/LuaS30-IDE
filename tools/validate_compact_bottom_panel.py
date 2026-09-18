@@ -3,30 +3,32 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 errors=[]
 
-view=(ROOT/"studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
+view=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 panel=(ROOT/"studio/app/widgets/bottom_panel.py").read_text(encoding="utf-8")
 theme=(ROOT/"studio/app/ui/theme.py").read_text(encoding="utf-8")
-main=(ROOT/"studio/app/ui/main_window.py").read_text(encoding="utf-8")
+main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 
 for token in (
-    "DEFAULT_BOTTOM_PANEL_HEIGHT = 145",
-    "MIN_BOTTOM_PANEL_HEIGHT = 72",
-    "def _reveal_bottom_panel",
-    "def hide_bottom_panel",
-    "self._editor_bottom_visible = False",
+    "self._console_visible = False",
     "self.bottom.hide()",
-    "preferred_height",
+    'def _toggle_console_panel',
+    'def _set_console_visible',
+    '"visible": bool(self._console_visible)',
+    '"height": int(self._console_last_height)',
+    '"active_key": self.bottom.active_key()',
 ):
     if token not in view:
-        errors.append("CodeEditorView missing compact panel contract: "+token)
+        errors.append("MainWindow missing compact panel contract: "+token)
 
-restore_start=view.find("def restore_layout_state")
-restore_end=view.find("def connect_workspace_state_changed",restore_start)
+restore_start=view.find("def _restore_workspace_layout_state")
+restore_end=view.find("def _restore_tool_tab",restore_start)
 restore=view[restore_start:restore_end]
-if "self._editor_bottom_visible = False" not in restore:
+if "self._console_visible = False" not in restore:
     errors.append("workspace restore can still auto-open bottom panel")
 if "self.bottom.hide()" not in restore:
     errors.append("workspace restore does not explicitly hide bottom panel")
+if "_set_console_visible(True)" in restore:
+    errors.append("workspace restore force-opens the bottom panel")
 
 for token in (
     "close_requested = Signal()",

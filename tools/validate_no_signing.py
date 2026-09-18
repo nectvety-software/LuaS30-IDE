@@ -123,9 +123,15 @@ def main() -> int:
     check("không có file khoá/chứng chỉ", not keys, str(keys[:5]))
 
     print("-- E. Studio không có nút ký --", flush=True)
-    studio = (ROOT / "studio" / "app" / "ui" / "main_window.py").read_text(encoding="utf-8")
-    check("main_window.py không còn sign_build_action",
-          "sign_build_action" not in studio and "sign_build_button" not in studio)
+    chrome = list((ROOT / "studio" / "app" / "vxpui").rglob("*.py"))
+    sign_hits = [
+        p.relative_to(ROOT).as_posix()
+        for p in chrome
+        if "sign_build_action" in p.read_text(encoding="utf-8", errors="ignore")
+        or "sign_build_button" in p.read_text(encoding="utf-8", errors="ignore")
+    ]
+    check("chrome vxpui không còn sign_build_action/sign_build_button",
+          not sign_hits, str(sign_hits[:4]))
 
     print("\n== KẾT QUẢ ==", flush=True)
     print("FAIL:", FAILS or "không có", flush=True)

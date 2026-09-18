@@ -24,6 +24,18 @@ def _version_text() -> str:
         return "unknown"
 
 
+def _stylesheet() -> str:
+    # APP_STYLE giu cac rule theo objectName cua dialog/view cu; dark_theme.qss
+    # (ban copy cua VXPEngine) dat sau de thang cac selector chung.
+    from app.ui.theme import APP_STYLE
+
+    qss = STUDIO_DIR / "app" / "vxpui" / "resources" / "dark_theme.qss"
+    try:
+        return APP_STYLE + "\n" + qss.read_text(encoding="utf-8")
+    except OSError:
+        return APP_STYLE
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if "--version" in args or "-V" in args:
@@ -31,28 +43,41 @@ def main(argv: list[str] | None = None) -> int:
         print(f"LuaS30 IDE {_version_text()}")
         return 0
 
-    from PySide6.QtCore import QCoreApplication
+    import ctypes
+
+    from PySide6.QtCore import QCoreApplication, Qt
     from PySide6.QtWidgets import QApplication
 
     from app.core.utf8 import configure_utf8_stdio
 
     configure_utf8_stdio()
 
-    from app.ui.main_window import MainWindow
-    from app.ui.theme import APP_STYLE
+    from app.vxpui.main_window import VxpMainWindow
 
+    # QSettings domain for window placement + workspace session keys.
     QCoreApplication.setOrganizationName("LuaS30")
     QCoreApplication.setApplicationName("LuaS30 Studio")
 
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "LuaS30.IDE.1.0"
+            )
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
     app.setApplicationDisplayName("LuaS30 IDE")
-    app.setStyleSheet(APP_STYLE)
+    app.setStyleSheet(_stylesheet())
     icon = _app_icon()
     if icon is not None:
         app.setWindowIcon(icon)
 
-    window = MainWindow(engine_root=ENGINE_ROOT)
-    window.show()
+    window = VxpMainWindow(engine_root=ENGINE_ROOT, version=_version_text())
+    window.show_initial()
     return app.exec()
 
 

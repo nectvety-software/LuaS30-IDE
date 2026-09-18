@@ -5,8 +5,8 @@ errors = []
 chat = (ROOT / 'studio/app/views/ai_chat_view.py').read_text(encoding='utf-8')
 terminal = (ROOT / 'studio/app/widgets/terminal_view.py').read_text(encoding='utf-8')
 protocol = (ROOT / 'studio/app/services/ai_agent_protocol.py').read_text(encoding='utf-8')
-editor = (ROOT / 'studio/app/views/code_editor_view.py').read_text(encoding='utf-8')
-main = (ROOT / 'studio/app/ui/main_window.py').read_text(encoding='utf-8')
+editor = (ROOT / 'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
+main = (ROOT / 'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
 skill = (ROOT / 'doc/ai/SKILL.md').read_text(encoding='utf-8')
 prompt = (ROOT / 'doc/ai/PROMPT.md').read_text(encoding='utf-8')
 

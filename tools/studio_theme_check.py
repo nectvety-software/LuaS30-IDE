@@ -57,7 +57,21 @@ ALLOWLIST: dict[str, str] = {
         "ví dụ JSON trong docstring",
     "app/services/ai_agent_protocol.py":
         "ví dụ JSON gửi cho model — màu NỘI DUNG game (khớp lua_export.ACCENT), không phải chrome",
+    "app/widgets/vxp_emu_window.py":
+        "bezel + màn Nokia 225 của cửa sổ giả lập — ART THIẾT BỊ, không phải chrome IDE",
 }
+
+# Chrome VXPEngine (studio/app/vxpui) mang bảng màu enterprise-dark RIÊNG
+# (#0F1115/#151A23/#5B93FF…), được port 1:1 theo yêu cầu UI — cố ý không
+# dùng palette.py của theme Studio cũ.
+for _chrome in (
+    "code_editor", "custom_dialog", "home_page", "icons", "log_format",
+    "main_window", "panel_frame", "task_progress", "title_bar", "toast",
+    "vxpemu_panel",
+):
+    ALLOWLIST[f"app/vxpui/{_chrome}.py"] = (
+        "bảng màu chrome VXPEngine — port 1:1, nguồn là dark_theme.qss"
+    )
 
 FAILS: list[str] = []
 
@@ -338,22 +352,29 @@ def check_tab_close(app, out_dir: Path | None) -> None:
 def render(out_dir: Path | None) -> None:
     from PySide6.QtCore import QPoint, QRect, QTimer
     from PySide6.QtGui import QFontDatabase
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
-    from app.ui.main_window import MainWindow
+    from app.vxpui.main_window import VxpMainWindow
     from app.ui.mediatek_mre_dialog import MediaTekMREConfigDialog
     from app.ui.theme import APP_STYLE
 
     print("\n-- C. render offscreen --", flush=True)
 
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setStyleSheet(APP_STYLE)
+    qss = STUDIO / "app/vxpui/resources/dark_theme.qss"
+    try:
+        app.setStyleSheet(APP_STYLE + "\n" + qss.read_text(encoding="utf-8"))
+    except OSError:
+        app.setStyleSheet(APP_STYLE)
 
     check("nạp được font hệ thống (cần QT_QPA_FONTDIR)",
           len(QFontDatabase.families()) > 0,
           f"families={len(QFontDatabase.families())}")
 
-    window = MainWindow(engine_root=ROOT)
+    # SetupDialog lần đầu chạy bằng dialog.exec() — chặn vô hạn trong offscreen;
+    # sandbox LUAS30_APPDATA luôn coi là first-run nên phải tắt.
+    VxpMainWindow._maybe_first_run_setup = lambda self: None
+    window = VxpMainWindow(engine_root=ROOT)
     window.resize(1440, 860)
     window.show()
     window.ensurePolished()
@@ -371,13 +392,22 @@ def render(out_dir: Path | None) -> None:
         return pixmap
 
     shot = grab(window, "main_window.png")
-    hits = light_blocks(shot)
-    check("MainWindow: không có khối sáng", not hits, f"hits={hits[:6]}")
-    bands = light_bands(shot)
-    check("MainWindow: không có dải sáng mỏng", not bands, f"bands={bands[:4]}")
+    # Nút accent "PrimaryAction" SÁNG CÓ CHỦ Ý (xanh #5B93FF của chrome
+    # VXPEngine) — miễn trừ đúng vùng của nó, giống hộp thoại MRE bên dưới.
+    accent_ignore = []
+    for b in window.findChildren(QPushButton):
+        if b.objectName() == "PrimaryAction" and b.isVisible():
+            top_left = b.mapTo(window, QPoint(0, 0))
+            accent_ignore.append(
+                QRect(top_left, b.size()).adjusted(-2, -2, 2, 2)
+            )
+    hits = light_blocks(shot, ignore=accent_ignore)
+    check("VxpMainWindow: không có khối sáng", not hits, f"hits={hits[:6]}")
+    bands = light_bands(shot, ignore=accent_ignore)
+    check("VxpMainWindow: không có dải sáng mỏng", not bands, f"bands={bands[:4]}")
 
     # thanh trạng thái phải là nền đậm, không phải một dải accent
-    bar = window.statusBar()
+    bar = window.findChild(QWidget, "StatusBar")
     if bar is not None:
         bar_px = grab(bar, "statusbar.png")
         img = bar_px.toImage()
@@ -386,16 +416,24 @@ def render(out_dir: Path | None) -> None:
               mid.name().lower() not in {"#f59e0b", "#fbbf24"},
               f"màu={mid.name()}")
 
-    # Project Hub: tiêu đề bảng KHÔNG phủ hết bề rộng (các cột cộng lại ~1075px
+    # Project Storage: tiêu đề bảng KHÔNG phủ hết bề rộng (các cột cộng lại ~1075px
     # trong khi header rộng ~1400px), nên đây là chỗ dễ lộ vùng nền mặc định
     # (sáng) của QHeaderView nhất — đúng chỗ đã từng lọt một dải trắng.
-    window._open_project_storage()
+    # Phải có dự án thật thì _enter_editor mới mở được trang editor.
+    import shutil
+    tmp = Path(tempfile.mkdtemp(prefix="luas30_theme_proj_"))
+    proj = tmp / "ThemeProj"
+    shutil.copytree(ROOT / "templates" / "basic", proj)
+    window._switch_project(proj)
+    app.processEvents()
+    window._open_projects_tab()
     app.processEvents()
     hub_shot = grab(window, "project_hub.png")
+    shutil.rmtree(tmp, ignore_errors=True)
     hub_hits = light_blocks(hub_shot)
-    check("Project Hub: không có khối sáng", not hub_hits, f"hits={hub_hits[:6]}")
+    check("Project Storage: không có khối sáng", not hub_hits, f"hits={hub_hits[:6]}")
     hub_bands = light_bands(hub_shot)
-    check("Project Hub: không có dải sáng mỏng", not hub_bands, f"bands={hub_bands[:4]}")
+    check("Project Storage: không có dải sáng mỏng", not hub_bands, f"bands={hub_bands[:4]}")
 
     dialog = MediaTekMREConfigDialog(window, app_name="MRE Snake Retro")
     dialog.resize(560, dialog.sizeHint().height())

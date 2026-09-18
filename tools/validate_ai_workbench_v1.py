@@ -8,8 +8,8 @@ provider = (ROOT/'studio/app/services/ai_provider_service.py').read_text(encodin
 protocol = (ROOT/'studio/app/services/ai_agent_protocol.py').read_text(encoding='utf-8')
 changes = (ROOT/'studio/app/services/ai_change_service.py').read_text(encoding='utf-8')
 diff = (ROOT/'studio/app/views/ai_diff_view.py').read_text(encoding='utf-8')
-editor = (ROOT/'studio/app/views/code_editor_view.py').read_text(encoding='utf-8')
-main = (ROOT/'studio/app/ui/main_window.py').read_text(encoding='utf-8')
+editor = (ROOT/'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
+main = (ROOT/'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
 
 credential = (ROOT/'studio/app/services/ai_credential_store.py').read_text(encoding='utf-8')
 sessions = (ROOT/'studio/app/services/ai_session_service.py').read_text(encoding='utf-8')

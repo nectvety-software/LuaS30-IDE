@@ -79,7 +79,10 @@ def main() -> int:
         time.sleep(0.15)
 
     # VXPEmu needs its own directory as cwd so Qt/unicorn DLLs resolve correctly.
-    cmd = [str(exe), str(vxp), '--autostart']
+    # --screen-only yields the bare 240x320 framebuffer window that the Nokia
+    # shell embeds (same launch contract as VXPEngine).
+    emu_args = [str(vxp), '--autostart', '--testapi', '--screen-only']
+    cmd = [str(exe)] + emu_args
     print('[EMU] Executable:', exe)
     print('[EMU] VXP:', vxp)
     print('[EMU] SHA-256:', actual)
@@ -99,7 +102,7 @@ def main() -> int:
             'emulator_pid': proc.pid,
             'emulated_vxp': str(vxp),
             'emulated_vxp_sha256': actual,
-            'emulator_args': [str(vxp), '--autostart'],
+            'emulator_args': emu_args,
             'sync_verified': True,
         })
         mpath.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')

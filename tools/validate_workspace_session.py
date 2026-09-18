@@ -12,30 +12,30 @@ for rel in required:
     if not (ROOT / rel).is_file():
         errors.append("missing: " + rel)
 
-main = (ROOT / "studio/app/ui/main_window.py").read_text(encoding="utf-8")
-view = (ROOT / "studio/app/views/code_editor_view.py").read_text(encoding="utf-8")
+main = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
+view = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 groups = (ROOT / "studio/app/editor/editor_group_manager.py").read_text(encoding="utf-8")
 store = (ROOT / "studio/app/core/workspace_session.py").read_text(encoding="utf-8")
 
 for token in (
     "WorkspaceSessionStore",
-    "_restore_workspace_session",
+    "_load_initial_state",
     "_save_workspace_session",
     "_restore_tool_tab",
-    "Split Editor Right",
-    "Close Editor Group",
+    "_restore_workspace_layout_state",
 ):
     if token not in main:
         errors.append("main window missing: " + token)
 
 for token in (
     "EditorGroupManager",
-    "workspace_state",
-    "restore_layout_state",
-    "connect_workspace_state_changed",
+    '"panel"',
+    '"workspace"',
+    "splitterMoved.connect",
+    "set_active_key",
 ):
     if token not in view:
-        errors.append("code editor view missing: " + token)
+        errors.append("main window layout persistence missing: " + token)
 
 for token in (
     "session_state",
