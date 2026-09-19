@@ -32,7 +32,11 @@ GENERIC_CODE_RE = re.compile(
 # ở đây, đừng sửa hai nơi.
 READONLY_TOOL_NAMES = ("read", "grep", "glob")
 DESIGN_TOOL_NAMES = ("ui_design", "asset")
-TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES
+# "engine": đọc lõi Lua MRE của chính IDE (templates/*/src, sdk/luas30, engine/,
+# compat/, extensions/) — những thứ nằm NGOÀI thư mục dự án nên read/grep/glob
+# thông thường không với tới.
+CORE_TOOL_NAMES = ("engine",)
+TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + CORE_TOOL_NAMES
 
 
 @dataclass(frozen=True)
@@ -481,12 +485,26 @@ def agent_protocol_prompt(
         " Design changes and asset generation are unavailable in this mode; do not emit "
         "ui_design or asset write ops."
     )
+    core_tools = (
+        "The engine tool reads the LuaS30 IDE itself — the MRE core that a project cannot "
+        "see: the thin Lua wrapper templates/basic/src/engine.lua, the global `engine` table "
+        "registration in engine/src/runtime_lua.c (a function absent there does not exist), "
+        "other templates, the MRE SDK surface (sdk/luas30: abi/symbols.json, include/ls30), "
+        "device compatibility fixtures (compat/) and installed extensions (extensions/). "
+        "Use it whenever you must know the real core API before editing project code — never "
+        "invent engine functions. Emit one block with op read|grep|glob|list, e.g.:\n"
+        "```luas30-tool\n"
+        '{"tool":"engine","args":{"op":"read","path":"templates/basic/src/engine.lua","start_line":1,"end_line":200},'
+        '"reason":"Learn the real Engine API before writing main.lua"}\n'
+        "```\n"
+        "Paths are relative to the IDE root; only the folders above are readable."
+    )
     return (
         "Do not reveal private chain-of-thought. Instead, when useful, provide only a brief "
         "high-level reasoning summary (1-5 short bullets) in this block:\n"
         "```luas30-summary\n- inspected relevant files\n- next step and why\n```\n"
         "The summary must describe conclusions/actions, not hidden token-by-token reasoning.\n"
-        + readonly_tools + "\n" + design_tools + "\n" + shell + "\n" + edits
+        + readonly_tools + "\n" + core_tools + "\n" + design_tools + "\n" + shell + "\n" + edits
         + (
             "\nFull Access automation is active: use the available read tools, code edits and shell actions autonomously, "
             "validate your work when useful, and stop only when the requested task is complete or you truly need user input."

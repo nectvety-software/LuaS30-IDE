@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Sprite Sheet Cutter — Công cụ cắt tài nguyên game 2D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0e14;
+    --panel:#12161f;
+    --panel2:#171c27;
+    --line:#232938;
+    --text:#dfe6f0;
+    --dim:#7c8699;
+    --accent:#5ee6c8;
+    --accent2:#ff8a5c;
+    --danger:#ff5d6c;
+    --mono: 'JetBrains Mono','SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--mono); font-size:13px;
+    height:100vh; overflow:hidden;
+  }
+  #app{ display:grid; grid-template-columns: 340px 1fr; grid-template-rows: 48px 1fr; height:100vh; }
+
+  #topbar{
+    grid-column: 1 / 3; grid-row: 1;
+    display:flex; align-items:center; gap:14px;
+    padding:0 16px; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  #topbar h1{ font-size:14px; letter-spacing:.06em; font-weight:600; margin:0; color:var(--accent);}
+  #topbar .sub{ color:var(--dim); font-size:11px; }
+  #topbar .spacer{ flex:1; }
+  .pill{ padding:3px 9px; border-radius:20px; background:var(--panel2); border:1px solid var(--line); color:var(--dim); font-size:11px;}
+
+  #sidebar{
+    grid-column:1; grid-row:2; background:var(--panel); border-right:1px solid var(--line);
+    overflow-y:auto; padding:14px;
+  }
+  #canvasArea{
+    grid-column:2; grid-row:2; position:relative; overflow:auto; background:
+      repeating-conic-gradient(#161b26 0% 25%, #10141d 0% 50%) 0 0/22px 22px;
+  }
+  #stage{ position:relative; display:inline-block; padding:60px; }
+  #baseCanvas, #overlayCanvas{ position:absolute; top:60px; left:60px; image-rendering:pixelated; }
+  #overlayCanvas{ cursor:crosshair; }
+
+  #zoomControls{
+    position:fixed; left:356px; top:64px; z-index:20;
+    display:flex; flex-direction:column; align-items:stretch; gap:0;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    overflow:hidden; box-shadow:0 4px 14px rgba(0,0,0,.35); width:44px;
+  }
+  #zoomControls button{
+    background:transparent; border:none; color:var(--text); cursor:pointer;
+    font-family:var(--mono); font-size:16px; padding:9px 0; line-height:1;
+  }
+  #zoomControls button:hover{ background:var(--line); color:var(--accent); }
+  #zoomControls #zoomInBtn, #zoomControls #zoomOutBtn{ font-size:17px; font-weight:700; }
+  #zoomPct{
+    text-align:center; font-size:10px; color:var(--accent); padding:6px 0;
+    border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+  }
+  #zoomResetBtn{ font-size:9.5px !important; color:var(--dim); padding:7px 0 !important; }
+
+  h2{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin:0 0 8px; border-bottom:1px solid var(--line); padding-bottom:6px;}
+  section{ margin-bottom:18px; }
+
+  .row{ display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  .row label{ width:78px; color:var(--dim); font-size:11px; flex-shrink:0; }
+  .row input[type=number], .row input[type=text]{
+    flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:5px 7px; border-radius:5px; font-family:var(--mono); font-size:12px; width:0;
+  }
+  .row input[type=range]{ flex:1; }
+  input[type=file]{ font-size:11px; color:var(--dim); width:100%; }
+
+  .btn{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:7px 10px; border-radius:6px; cursor:pointer; font-family:var(--mono); font-size:12px;
+    transition:.12s; width:100%; margin-bottom:6px;
+  }
+  .btn:hover{ border-color:var(--accent); color:var(--accent); }
+  .btn.primary{ background:var(--accent); color:#06110d; border-color:var(--accent); font-weight:600; }
+  .btn.primary:hover{ filter:brightness(1.08); color:#06110d; }
+  .btn.danger:hover{ border-color:var(--danger); color:var(--danger); }
+  .btnrow{ display:flex; gap:6px; }
+  .btnrow .btn{ margin-bottom:0; }
+
+  .modeTabs{ display:flex; gap:4px; margin-bottom:10px; }
+  .modeTabs button{
+    flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--dim);
+    padding:7px 4px; font-size:11px; border-radius:6px; cursor:pointer; font-family:var(--mono);
+  }
+  .modeTabs button.active{ background:var(--accent); color:#06110d; border-color:var(--accent); font-weight:700;}
+
+  #coordReadout{
+    position:sticky; top:0; z-index:5; background:var(--panel2); border:1px solid var(--line);
+    border-radius:6px; padding:8px 10px; margin-bottom:12px; font-size:11px; color:var(--accent);
+    display:flex; justify-content:space-between;
+  }
+  #coordReadout span{ color:var(--dim); }
+
+  #cutList{ display:flex; flex-direction:column; gap:6px; max-height:none; }
+  .cutItem{
+    background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:6px;
+    display:flex; gap:8px; align-items:center; cursor:pointer;
+  }
+  .cutItem.selected{ border-color:var(--accent); }
+  .cutItem canvas{ image-rendering:pixelated; background:#000; border-radius:3px; flex-shrink:0; }
+  .cutMeta{ flex:1; min-width:0; }
+  .cutMeta input{ width:100%; background:transparent; border:none; color:var(--text); font-family:var(--mono); font-size:11.5px; padding:0; margin-bottom:2px;}
+  .cutMeta .xy{ color:var(--dim); font-size:10px; }
+  .cutMeta .xy input{ width:32px; display:inline; background:var(--panel); border:1px solid var(--line); border-radius:3px; margin-right:2px; padding:1px 3px; font-size:10px; }
+  .delBtn{ color:var(--dim); background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px;}
+  .delBtn:hover{ color:var(--danger); }
+
+  .hint{ color:var(--dim); font-size:10.5px; line-height:1.5; margin-top:4px;}
+  .empty{ color:var(--dim); font-size:11px; text-align:center; padding:14px 0; }
+  #zoomLabel{ width:44px; text-align:right; color:var(--accent); }
+  ::-webkit-scrollbar{ width:9px; height:9px;}
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:6px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <h1>⛏ SPRITE SHEET CUTTER</h1>
+    <span class="sub">cắt tài nguyên game 2D — tọa độ pixel chính xác tuyệt đối</span>
+    <div class="spacer"></div>
+    <span class="pill" id="imgInfo">chưa có ảnh</span>
+    <span class="pill" id="cutCount">0 mảnh</span>
+    <span class="pill" id="projInfo" title="Dự án LuaS30 đang mở trong Studio">không có bridge — chạy độc lập</span>
+  </div>
+
+  <div id="sidebar">
+
+    <section>
+      <h2>1. Nạp ảnh sprite sheet</h2>
+      <input type="file" id="fileInput" accept="image/*">
+      <div class="hint">Kéo thả cũng được. Ảnh mẫu đã nạp sẵn — bạn có thể thay bằng file của mình.</div>
+    </section>
+
+    <section>
+      <h2>2. Tự động cắt toàn bộ ảnh</h2>
+      <div class="row">
+        <label>Màu nền</label>
+        <div id="bgSwatch" style="width:26px;height:26px;border-radius:5px;border:1px solid var(--line);flex-shrink:0;background:repeating-conic-gradient(#333 0% 25%, #222 0% 50%) 0 0/8px 8px;"></div>
+        <span id="bgSwatchLabel" style="color:var(--dim);font-size:11px;">chưa xác định</span>
+      </div>
+      <div class="btnrow" style="margin-bottom:8px;">
+        <button class="btn" id="pickBgBtn">🎯 Chọn màu nền (click ảnh)</button>
+        <button class="btn" id="resetBgBtn">↺ Tự nhận diện lại</button>
+      </div>
+      <div class="hint">Nếu bấm "Tự động cắt" mà chỉ ra vài mảnh hoặc bỏ sót cả mảng lớn — thường do màu nền tự nhận diện bị sai (ví dụ dính trúng 1 nhãn tiêu đề gần góc ảnh). Bấm <b>🎯 Chọn màu nền</b> rồi click vào đúng vùng nền thật của ảnh (chỗ trống giữa các icon) để sửa, sau đó chạy lại.</div>
+      <div class="row"><label>Ngưỡng nền</label><input type="range" id="autoTol" min="0" max="150" value="30"><span id="autoTolVal" style="width:28px;color:var(--accent)">30</span></div>
+      <div class="row"><label>Cỡ tối thiểu</label><input type="number" id="autoMinSize" value="10" min="1"></div>
+      <div class="row"><label>Cỡ tối đa</label><input type="number" id="autoMaxSize" value="0" min="0" placeholder="0 = không giới hạn"></div>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--dim);font-size:11px;margin-bottom:8px;">
+        <input type="checkbox" id="autoClearFirst" checked> Xoá danh sách cũ trước khi cắt
+      </label>
+      <button class="btn primary" id="autoDetectBtn">⚡ Tự động cắt toàn bộ ảnh</button>
+      <div class="hint" id="autoStatus">Công cụ sẽ quét toàn ảnh, tách các khối rời nhau theo màu nền (tự nhận nền trắng hoặc nền tối) và tự tính đúng khung x,y,rộng,cao cho từng cái. Nếu ảnh có cả icon nhỏ lẫn panel ảnh nền lớn (kiểu "BACKGROUND LAYERS") tách biệt nhau bằng khoảng trắng, một lượt quét là đủ lấy hết cả hai — không cần seam detection vì đã có khoảng hở.</div>
+      <div class="hint">Dùng <b>Cỡ tối đa</b> nếu muốn quét riêng 2 lượt: lượt 1 đặt cỡ tối đa nhỏ để chỉ lấy icon/nhân vật, lượt 2 đặt cỡ tối thiểu lớn để chỉ lấy các panel ảnh nền lớn (tick "Xoá danh sách cũ" = tắt để gộp cả 2 lượt vào 1 danh sách).</div>
+      <div class="hint">Lưu ý: vùng lưới liền khối như bộ TILES 16×16 sẽ bị gộp thành 1 khối do các ô sát nhau không có nền hở — với các vùng đó dùng chế độ <b>Lưới đều</b> ở dưới sẽ chính xác hơn. Nhãn tiêu đề dạng khung màu (ví dụ các badge xanh "CHARACTERS", "COLLECTIBLES"...) cũng sẽ bị bắt thành 1 mảnh riêng — xoá chúng khỏi danh sách trước khi xuất.</div>
+    </section>
+
+    <section>
+      <h2>3. Chế độ cắt thủ công / theo lưới</h2>
+      <div class="modeTabs">
+        <button data-mode="manual" class="active">Thủ công</button>
+        <button data-mode="grid">Lưới đều</button>
+        <button data-mode="wand">Bắt biên 1 điểm</button>
+      </div>
+
+      <div id="manualPanel" class="modePanel">
+        <div class="hint">Kéo chuột trên canvas để vẽ khung chọn. Toạ độ hiện theo pixel gốc của ảnh (không theo pixel màn hình) → không lệch vị trí dù zoom bao nhiêu.</div>
+      </div>
+
+      <div id="gridPanel" class="modePanel" style="display:none">
+        <div class="row"><label>Cột</label><input type="number" id="gCols" value="4" min="1"></div>
+        <div class="row"><label>Hàng</label><input type="number" id="gRows" value="1" min="1"></div>
+        <div class="row"><label>Rộng ô</label><input type="number" id="gCellW" value="32" min="1"></div>
+        <div class="row"><label>Cao ô</label><input type="number" id="gCellH" value="40" min="1"></div>
+        <div class="row"><label>Lệch X</label><input type="number" id="gOffX" value="0"></div>
+        <div class="row"><label>Lệch Y</label><input type="number" id="gOffY" value="0"></div>
+        <div class="row"><label>Cách X</label><input type="number" id="gGapX" value="0"></div>
+        <div class="row"><label>Cách Y</label><input type="number" id="gGapY" value="0"></div>
+        <button class="btn" id="fitGridBtn">Tự căn lưới theo vùng đang kéo</button>
+        <button class="btn primary" id="addGridBtn">+ Thêm toàn bộ ô lưới</button>
+        <div class="hint">Vẽ một khung kéo trên canvas quanh 1 hàng mẫu rồi bấm "Tự căn lưới" để suy ra offset/kích thước ô chuẩn xác — tránh lệch vị trí do đo tay.</div>
+      </div>
+
+      <div id="wandPanel" class="modePanel" style="display:none">
+        <div class="row"><label>Ngưỡng màu</label><input type="range" id="wandTol" min="0" max="120" value="28"><span id="wandTolVal" style="width:28px;color:var(--accent)">28</span></div>
+        <div class="row"><label>Đệm (px)</label><input type="number" id="wandPad" value="1" min="0"></div>
+        <div class="hint">Click vào 1 sprite: công cụ tự lan biên theo màu nền để tìm đúng bounding box (x,y,rộng,cao) — chuẩn theo pixel thật, không đoán bằng mắt.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Xem trước &amp; điều khiển</h2>
+      <div class="row"><label>Zoom</label><input type="range" id="zoom" min="50" max="800" value="200" step="10"><span id="zoomLabel">200%</span></div>
+      <div class="row"><label>Lưới px</label><input type="range" id="gridOverlay" min="0" max="128" value="0" step="8"><span id="gridOverlayVal" style="width:28px;color:var(--dim)">off</span></div>
+    </section>
+
+    <section>
+      <h2 id="listTitle">5. Danh sách mảnh cắt (0)</h2>
+      <div id="cutList"><div class="empty">Chưa có mảnh nào — cắt bằng 1 trong 3 chế độ ở trên.</div></div>
+    </section>
+
+    <section>
+      <h2>6. Xuất file</h2>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--dim);font-size:11px;margin-bottom:6px;">
+        <input type="checkbox" id="removeBgToggle" checked> Xoá nền (trong suốt) — mặc định cho mảnh mới
+      </label>
+      <div class="row" id="removeBgTolRow">
+        <label>Ngưỡng nền</label><input type="range" id="removeBgTol" min="0" max="150" value="30"><span id="removeBgTolVal" style="width:28px;color:var(--accent)">30</span>
+      </div>
+      <div class="hint" id="removeBgHint">Pixel gần màu nền (đo tự động từ góc ảnh) trong ngưỡng này sẽ trong suốt. Mỗi mảnh trong danh sách có công tắc riêng để bật/tắt — hữu ích khi 1 ảnh vừa có icon cần xoá nền vừa có panel ảnh nền (kiểu BACKGROUND LAYERS) cần giữ nguyên.</div>
+      <div class="btnrow" style="margin-bottom:8px;">
+        <button class="btn" id="bgOnAllBtn">Bật xoá nền — tất cả</button>
+        <button class="btn" id="bgOffAllBtn">Tắt xoá nền — tất cả</button>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <label>Thư mục đích</label>
+        <input type="text" id="exportDir" value="assets/sprites" spellcheck="false"
+               style="flex:1;min-width:0;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12px;"
+               title="Đường dẫn tương đối trong dự án — PNG cắt ra và atlas.json sẽ được ghi vào đây">
+      </div>
+      <div class="btnrow">
+        <button class="btn primary" id="exportProjectBtn">📥 Ghi vào dự án (PNG + atlas.json)</button>
+        <button class="btn" id="exportZipBtn">↓ Tải .zip</button>
+      </div>
+      <div class="hint" id="exportStatus"></div>
+      <button class="btn danger" id="clearBtn">Xoá toàn bộ danh sách</button>
+      <div class="hint">Ghi vào dự án cần LuaS30 Studio (cầu nối <code>window.luaS30</code>). Nút .zip dùng JSZip — cần mạng để nạp CDN; mỗi ảnh PNG cắt đúng pixel + atlas.json chứa {name,x,y,w,h} để nạp vào main.lua.</div>
+    </section>
+
+  </div>
+
+  <div id="canvasArea">
+    <div id="zoomControls">
+      <button id="zoomInBtn" title="Phóng to">+</button>
+      <span id="zoomPct">200%</span>
+      <button id="zoomOutBtn" title="Thu nhỏ">−</button>
+      <button id="zoomResetBtn" title="Về 100%">100%</button>
+    </div>
+    <div id="stage">
+      <div id="coordReadout" style="position:absolute; top:14px; left:14px; width:260px;">
+        <span>ảnh:</span> <b id="roImgXY">-, -</b>
+      </div>
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="overlayCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const baseCanvas = document.getElementById('baseCanvas');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const bctx = baseCanvas.getContext('2d');
+const octx = overlayCanvas.getContext('2d');
+const stage = document.getElementById('stage');
+const imgInfo = document.getElementById('imgInfo');
+const cutCountEl = document.getElementById('cutCount');
+const listTitle = document.getElementById('listTitle');
+const cutListEl = document.getElementById('cutList');
+const roImgXY = document.getElementById('roImgXY');
+
+let img = null;          // HTMLImageElement (source)
+let natW = 0, natH = 0;  // natural pixel size of image
+let scale = 2.0;         // display scale factor
+let cuts = [];           // {id,name,x,y,w,h}
+let nextId = 1;
+let mode = 'manual';
+let selectedCutId = null;
+
+let dragging = false, dragStartImg = null, dragCurImg = null;
+let lastFitRect = null; // last manual drag rect, used for "fit grid"
+
+// ---------- image loading ----------
+function loadImageFromSrc(src){
+  const image = new Image();
+  image.onload = () => {
+    img = image; natW = image.naturalWidth; natH = image.naturalHeight;
+    baseCanvas.width = natW; baseCanvas.height = natH;
+    overlayCanvas.width = natW; overlayCanvas.height = natH;
+    bctx.imageSmoothingEnabled = false;
+    bctx.clearRect(0,0,natW,natH);
+    bctx.drawImage(image,0,0);
+    imgInfo.textContent = natW + ' × ' + natH + ' px';
+    applyZoom();
+    refreshAutoBg();
+    redrawOverlay();
+  };
+  image.onerror = () => { console.warn('Không tải được ảnh mẫu, hãy tự chọn file.'); };
+  image.src = src;
+}
+// try preload the sample sheet shipped alongside this tool
+loadImageFromSrc('sample-sheet.png');
+
+fileInput.addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const url = URL.createObjectURL(f);
+  loadImageFromSrc(url);
+});
+document.body.addEventListener('dragover', e=>e.preventDefault());
+document.body.addEventListener('drop', e=>{
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if(f && f.type.startsWith('image/')){ loadImageFromSrc(URL.createObjectURL(f)); }
+});
+
+// ---------- zoom ----------
+const zoomSlider = document.getElementById('zoom');
+const zoomLabel = document.getElementById('zoomLabel');
+function applyZoom(){
+  scale = zoomSlider.value/100;
+  zoomLabel.textContent = zoomSlider.value + '%';
+  const w = Math.round(natW*scale), h = Math.round(natH*scale);
+  baseCanvas.style.width = w+'px'; baseCanvas.style.height = h+'px';
+  overlayCanvas.style.width = w+'px'; overlayCanvas.style.height = h+'px';
+  stage.style.width = (w+120)+'px'; stage.style.height = (h+120)+'px';
+}
+const zoomPct = document.getElementById('zoomPct');
+function setZoom(v){
+  v = Math.max(+zoomSlider.min, Math.min(+zoomSlider.max, Math.round(v)));
+  zoomSlider.value = v;
+  applyZoom();
+  zoomPct.textContent = v + '%';
+  redrawOverlay();
+}
+zoomSlider.addEventListener('input', ()=>{ applyZoom(); zoomPct.textContent = zoomSlider.value+'%'; });
+overlayCanvas.addEventListener('wheel', (e)=>{
+  if(!e.ctrlKey) return;
+  e.preventDefault();
+  setZoom(+zoomSlider.value + (e.deltaY<0? 20:-20));
+});
+document.getElementById('zoomInBtn').addEventListener('click', ()=> setZoom(+zoomSlider.value * 1.25));
+document.getElementById('zoomOutBtn').addEventListener('click', ()=> setZoom(+zoomSlider.value / 1.25));
+document.getElementById('zoomResetBtn').addEventListener('click', ()=> setZoom(100));
+zoomPct.textContent = zoomSlider.value + '%';
+
+// pixel guide overlay
+const gridOverlaySlider = document.getElementById('gridOverlay');
+const gridOverlayVal = document.getElementById('gridOverlayVal');
+gridOverlaySlider.addEventListener('input', ()=>{
+  gridOverlayVal.textContent = gridOverlaySlider.value==0 ? 'off' : gridOverlaySlider.value+'px';
+  redrawOverlay();
+});
+
+document.getElementById('autoTol').addEventListener('input', (e)=>{
+  document.getElementById('autoTolVal').textContent = e.target.value;
+});
+
+document.getElementById('resetBgBtn').addEventListener('click', ()=>{
+  if(!img){ alert('Hãy nạp ảnh trước.'); return; }
+  refreshAutoBg();
+});
+document.getElementById('pickBgBtn').addEventListener('click', ()=>{
+  if(!img){ alert('Hãy nạp ảnh trước.'); return; }
+  pickingBg = true;
+  overlayCanvas.style.cursor = 'copy';
+  document.getElementById('pickBgBtn').textContent = '🎯 Click vào vùng nền trong ảnh...';
+});
+
+// ---------- mode tabs ----------
+document.querySelectorAll('.modeTabs button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.modeTabs button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    mode = b.dataset.mode;
+    document.getElementById('manualPanel').style.display = mode==='manual'?'block':'none';
+    document.getElementById('gridPanel').style.display = mode==='grid'?'block':'none';
+    document.getElementById('wandPanel').style.display = mode==='wand'?'block':'none';
+    redrawOverlay();
+  });
+});
+
+// ---------- coord conversion ----------
+function clientToImg(e){
+  const r = overlayCanvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) / scale;
+  const y = (e.clientY - r.top) / scale;
+  return { x: Math.max(0,Math.min(natW, Math.round(x))), y: Math.max(0,Math.min(natH, Math.round(y))) };
+}
+
+overlayCanvas.addEventListener('mousemove', (e)=>{
+  const p = clientToImg(e);
+  roImgXY.textContent = p.x + ', ' + p.y;
+  if(mode==='manual' && dragging){
+    dragCurImg = p;
+    redrawOverlay();
+  }
+});
+
+overlayCanvas.addEventListener('mousedown', (e)=>{
+  if(!img) return;
+  const p = clientToImg(e);
+  if(pickingBg){
+    const d = bctx.getImageData(p.x,p.y,1,1).data;
+    currentBg = [d[0],d[1],d[2],d[3]];
+    updateBgSwatch();
+    pickingBg = false;
+    overlayCanvas.style.cursor = 'crosshair';
+    document.getElementById('pickBgBtn').textContent = '🎯 Chọn màu nền (click ảnh)';
+    return;
+  }
+  if(mode==='manual'){
+    dragging = true; dragStartImg = p; dragCurImg = p;
+  } else if(mode==='wand'){
+    magicWandAt(p.x, p.y);
+  }
+});
+
+window.addEventListener('mouseup', ()=>{
+  if(mode==='manual' && dragging){
+    dragging = false;
+    const rect = normRect(dragStartImg, dragCurImg);
+    if(rect.w>=2 && rect.h>=2){
+      lastFitRect = rect;
+      addCut(rect, 'cut_'+nextId);
+    }
+    redrawOverlay();
+  }
+});
+
+function normRect(a,b){
+  const x = Math.min(a.x,b.x), y = Math.min(a.y,b.y);
+  const w = Math.abs(b.x-a.x), h = Math.abs(b.y-a.y);
+  return {x,y,w,h};
+}
+
+// ---------- grid mode ----------
+const gCols=document.getElementById('gCols'), gRows=document.getElementById('gRows'),
+      gCellW=document.getElementById('gCellW'), gCellH=document.getElementById('gCellH'),
+      gOffX=document.getElementById('gOffX'), gOffY=document.getElementById('gOffY'),
+      gGapX=document.getElementById('gGapX'), gGapY=document.getElementById('gGapY');
+[gCols,gRows,gCellW,gCellH,gOffX,gOffY,gGapX,gGapY].forEach(el=>el.addEventListener('input', redrawOverlay));
+
+document.getElementById('fitGridBtn').addEventListener('click', ()=>{
+  if(!lastFitRect){ alert('Hãy kéo một khung mẫu trên canvas trước (chế độ Thủ công) rồi quay lại đây.'); return; }
+  gCellW.value = lastFitRect.w; gCellH.value = lastFitRect.h;
+  gOffX.value = lastFitRect.x; gOffY.value = lastFitRect.y;
+  redrawOverlay();
+});
+
+function computeGridRects(){
+  const cols=+gCols.value, rows=+gRows.value, cw=+gCellW.value, ch=+gCellH.value,
+        ox=+gOffX.value, oy=+gOffY.value, gx=+gGapX.value, gy=+gGapY.value;
+  const rects = [];
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      rects.push({x: ox + c*(cw+gx), y: oy + r*(ch+gy), w: cw, h: ch, r, c});
+    }
+  }
+  return rects;
+}
+document.getElementById('addGridBtn').addEventListener('click', ()=>{
+  const rects = computeGridRects();
+  rects.forEach(rc=>{
+    if(rc.x+rc.w<=natW && rc.y+rc.h<=natH){
+      addCut({x:rc.x,y:rc.y,w:rc.w,h:rc.h}, 'r'+rc.r+'_c'+rc.c);
+    }
+  });
+});
+
+// ---------- magic wand (flood fill bounding box) ----------
+function magicWandAt(px,py){
+  const tol = +document.getElementById('wandTol').value;
+  const pad = +document.getElementById('wandPad').value;
+  const data = bctx.getImageData(0,0,natW,natH).data;
+  const idx = (x,y)=>(y*natW+x)*4;
+  const startI = idx(px,py);
+  const sr=data[startI], sg=data[startI+1], sb=data[startI+2], sa=data[startI+3];
+
+  const visited = new Uint8Array(natW*natH);
+  const stack = [[px,py]];
+  let minX=px,maxX=px,minY=py,maxY=py;
+  const matches = (x,y)=>{
+    const i = idx(x,y);
+    const dr=data[i]-sr, dg=data[i+1]-sg, db=data[i+2]-sb, da=data[i+3]-sa;
+    return Math.sqrt(dr*dr+dg*dg+db*db+da*da) <= tol;
+  };
+  while(stack.length){
+    const [x,y] = stack.pop();
+    if(x<0||y<0||x>=natW||y>=natH) continue;
+    const vi = y*natW+x;
+    if(visited[vi]) continue;
+    if(!matches(x,y)) continue;
+    visited[vi]=1;
+    if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y;
+    stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+  }
+  // matched region is the *background* touching click point often; if region is huge (>60% of image) invert: treat non-matching pixels as the sprite instead
+  const area = (maxX-minX+1)*(maxY-minY+1);
+  if(area > natW*natH*0.6){
+    // fallback: find bounding box of pixels alpha>10 and not close to clicked bg color, in local neighborhood window
+    // simple alternative: use alpha channel bounding box near the click within a search window
+    const win = 160;
+    let mnX=Math.max(0,px-win), mxX=Math.min(natW-1,px+win), mnY=Math.max(0,py-win), mxY=Math.min(natH-1,py+win);
+    let fMinX=mxX+1,fMaxX=mnX-1,fMinY=mxY+1,fMaxY=mnY-1;
+    for(let y=mnY;y<=mxY;y++){
+      for(let x=mnX;x<=mxX;x++){
+        const i=idx(x,y);
+        const dr=data[i]-sr, dg=data[i+1]-sg, db=data[i+2]-sb;
+        const dist = Math.sqrt(dr*dr+dg*dg+db*db);
+        if(data[i+3]>10 && dist>tol){
+          if(x<fMinX)fMinX=x; if(x>fMaxX)fMaxX=x; if(y<fMinY)fMinY=y; if(y>fMaxY)fMaxY=y;
+        }
+      }
+    }
+    if(fMaxX>=fMinX){ minX=fMinX;maxX=fMaxX;minY=fMinY;maxY=fMaxY; }
+  }
+  const x = Math.max(0,minX-pad), y = Math.max(0,minY-pad);
+  const w = Math.min(natW,maxX+1+pad)-x, h = Math.min(natH,maxY+1+pad)-y;
+  if(w>0 && h>0) addCut({x,y,w,h}, 'sprite_'+nextId);
+}
+
+// ---------- auto-detect whole sheet ----------
+// Robust background detection: sample the WHOLE perimeter (not just corners) so a
+// label badge sitting near one corner can't poison the result, then take the mode.
+function detectBackgroundColorRobust(data){
+  const counts = new Map();
+  let bestKey = null, bestN = -1, bestColor = null;
+  const step = Math.max(1, Math.round(Math.min(natW,natH)/300)); // sample density scales with image size
+  const sample = (x,y)=>{
+    const i = (y*natW+x)*4;
+    // quantize a bit so antialiasing noise doesn't split votes across near-identical colors
+    const key = (data[i]>>3)+','+(data[i+1]>>3)+','+(data[i+2]>>3)+','+(data[i+3]>>4);
+    const n = (counts.get(key)||0)+1;
+    counts.set(key,n);
+    if(n>bestN){ bestN=n; bestKey=key; bestColor=[data[i],data[i+1],data[i+2],data[i+3]]; }
+  };
+  for(let x=0;x<natW;x+=step){ sample(x,0); sample(x,natH-1); }
+  for(let y=0;y<natH;y+=step){ sample(0,y); sample(natW-1,y); }
+  return bestColor;
+}
+
+// currentBg: the [r,g,b,a] used everywhere as "this counts as background".
+// Auto-detected on image load; can be overridden by clicking "Chọn màu nền".
+let currentBg = null;
+let pickingBg = false;
+
+function refreshAutoBg(){
+  if(!img) return;
+  currentBg = detectBackgroundColorRobust(bctx.getImageData(0,0,natW,natH).data);
+  updateBgSwatch();
+}
+function updateBgSwatch(){
+  const sw = document.getElementById('bgSwatch');
+  if(!sw || !currentBg) return;
+  const [r,g,b,a] = currentBg;
+  sw.style.background = a < 16 ? 'transparent' : `rgba(${r},${g},${b},${a/255})`;
+  sw.title = a < 16 ? 'Nền: trong suốt (alpha≈0)' : `Nền: rgba(${r},${g},${b},${(a/255).toFixed(2)})`;
+  document.getElementById('bgSwatchLabel').textContent = a < 16 ? 'trong suốt' : `${r},${g},${b}`;
+}
+
+// Matches a pixel against a background color. When the background itself is
+// (near-)transparent, RGB is meaningless noise in many PNG exporters, so we
+// match on alpha alone instead of RGBA distance.
+function colorMatchesBg(data, i, bg, tol){
+  if(bg[3] < 16){
+    return data[i+3] <= Math.max(16, tol);
+  }
+  const dr=data[i]-bg[0], dg=data[i+1]-bg[1], db=data[i+2]-bg[2], da=data[i+3]-bg[3];
+  return (dr*dr+dg*dg+db*db+da*da) <= tol*tol;
+}
+
+function autoDetectAll(){
+  const tol = +document.getElementById('autoTol').value;
+  const minSize = +document.getElementById('autoMinSize').value;
+  const maxSize = +document.getElementById('autoMaxSize').value; // 0 = no limit
+  const data = bctx.getImageData(0,0,natW,natH).data;
+  const bg = currentBg || detectBackgroundColorRobust(data);
+  const isBg = (i)=> colorMatchesBg(data, i, bg, tol);
+  const total = natW*natH;
+  const visited = new Uint8Array(total);
+  const regions = [];
+  const stack = new Int32Array(total);
+
+  for(let y=0;y<natH;y++){
+    for(let x=0;x<natW;x++){
+      const vi = y*natW+x;
+      if(visited[vi]) continue;
+      const i = vi*4;
+      if(isBg(i)){ visited[vi]=1; continue; }
+      let sp = 0;
+      stack[sp++] = vi;
+      visited[vi] = 1;
+      let minX=x,maxX=x,minY=y,maxY=y;
+      while(sp>0){
+        const cvi = stack[--sp];
+        const cx = cvi % natW, cy = (cvi / natW) | 0;
+        if(cx<minX)minX=cx; if(cx>maxX)maxX=cx; if(cy<minY)minY=cy; if(cy>maxY)maxY=cy;
+        // 4-connectivity keeps separate icons from merging across thin gaps
+        if(cx+1<natW){ const nvi=cvi+1; if(!visited[nvi]){ const ni=nvi*4; visited[nvi]=1; if(!isBg(ni)) stack[sp++]=nvi; } }
+        if(cx-1>=0){ const nvi=cvi-1; if(!visited[nvi]){ const ni=nvi*4; visited[nvi]=1; if(!isBg(ni)) stack[sp++]=nvi; } }
+        if(cy+1<natH){ const nvi=cvi+natW; if(!visited[nvi]){ const ni=nvi*4; visited[nvi]=1; if(!isBg(ni)) stack[sp++]=nvi; } }
+        if(cy-1>=0){ const nvi=cvi-natW; if(!visited[nvi]){ const ni=nvi*4; visited[nvi]=1; if(!isBg(ni)) stack[sp++]=nvi; } }
+      }
+      const w = maxX-minX+1, h = maxY-minY+1;
+      if(w>=minSize && h>=minSize && (maxSize<=0 || (w<=maxSize && h<=maxSize))){
+        regions.push({x:minX,y:minY,w,h});
+      }
+    }
+  }
+  // reading order: top to bottom, left to right, grouped into loose rows
+  regions.sort((a,b)=>{
+    const rowA = Math.round(a.y/24), rowB = Math.round(b.y/24);
+    return rowA-rowB || a.x-b.x;
+  });
+  return regions;
+}
+
+document.getElementById('autoDetectBtn').addEventListener('click', ()=>{
+  if(!img){ alert('Hãy nạp ảnh trước.'); return; }
+  const btn = document.getElementById('autoDetectBtn');
+  const status = document.getElementById('autoStatus');
+  btn.disabled = true; btn.textContent = 'Đang quét...';
+  status.textContent = 'Đang phân tích pixel, vui lòng đợi vài giây...';
+  setTimeout(()=>{
+    const regions = autoDetectAll();
+    if(document.getElementById('autoClearFirst').checked){ cuts = []; }
+    regions.forEach(r=>{
+      const cut = { id: nextId++, name: 'sprite_'+String(nextId-1).padStart(3,'0'), x:r.x, y:r.y, w:r.w, h:r.h, removeBg: removeBgToggle.checked };
+      cuts.push(cut);
+    });
+    selectedCutId = null;
+    renderCutList(); redrawOverlay();
+    btn.disabled = false; btn.textContent = '⚡ Tự động cắt toàn bộ ảnh';
+    status.textContent = regions.length
+      ? `Đã tự động tìm và cắt ${regions.length} sprite. Kiểm tra danh sách bên dưới, xoá/gộp/chỉnh sửa nếu có mảnh thừa (thường là chữ tiêu đề), rồi bấm Xuất file.`
+      : 'Không tìm thấy sprite nào — thử tăng Ngưỡng nền hoặc giảm Cỡ tối thiểu.';
+  }, 30);
+});
+
+// ---------- background removal (transparent export) ----------
+const removeBgToggle = document.getElementById('removeBgToggle');
+const removeBgTolRow = document.getElementById('removeBgTolRow');
+const removeBgHint = document.getElementById('removeBgHint');
+const removeBgTol = document.getElementById('removeBgTol');
+const removeBgTolVal = document.getElementById('removeBgTolVal');
+
+removeBgToggle.addEventListener('change', ()=>{
+  const on = removeBgToggle.checked;
+  removeBgTolRow.style.display = on ? 'flex' : 'none';
+  removeBgHint.style.display = on ? 'block' : 'none';
+  renderCutList();
+});
+removeBgTol.addEventListener('input', ()=>{
+  removeBgTolVal.textContent = removeBgTol.value;
+  renderCutList();
+});
+document.getElementById('bgOnAllBtn').addEventListener('click', ()=>{
+  cuts.forEach(c=>c.removeBg = true); renderCutList();
+});
+document.getElementById('bgOffAllBtn').addEventListener('click', ()=>{
+  cuts.forEach(c=>c.removeBg = false); renderCutList();
+});
+
+function getBgColorForRemoval(){
+  return currentBg || detectBackgroundColorRobust(bctx.getImageData(0,0,natW,natH).data);
+}
+function stripBackground(ctx, w, h, bg, tol){
+  const imgData = ctx.getImageData(0,0,w,h);
+  const d = imgData.data;
+  for(let p=0; p<d.length; p+=4){
+    if(colorMatchesBg(d, p, bg, tol)){ d[p+3] = 0; }
+  }
+  ctx.putImageData(imgData,0,0);
+}
+
+// ---------- cuts management ----------
+function addCut(rect, name){
+  const cut = { id: nextId++, name, x: rect.x, y: rect.y, w: rect.w, h: rect.h, removeBg: removeBgToggle.checked };
+  cuts.push(cut);
+  selectedCutId = cut.id;
+  renderCutList();
+  redrawOverlay();
+}
+function removeCut(id){
+  cuts = cuts.filter(c=>c.id!==id);
+  if(selectedCutId===id) selectedCutId=null;
+  renderCutList(); redrawOverlay();
+}
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(cuts.length && confirm('Xoá toàn bộ '+cuts.length+' mảnh đã cắt?')){ cuts=[]; selectedCutId=null; renderCutList(); redrawOverlay(); }
+});
+
+function renderCutList(){
+  cutCountEl.textContent = cuts.length + ' mảnh';
+  listTitle.textContent = '5. Danh sách mảnh cắt (' + cuts.length + ')';
+  cutListEl.innerHTML='';
+  if(!cuts.length){ cutListEl.innerHTML = '<div class="empty">Chưa có mảnh nào — cắt bằng 1 trong 3 chế độ ở trên.</div>'; return; }
+  const bgColor = cuts.some(c=>c.removeBg) ? getBgColorForRemoval() : null;
+  cuts.forEach(c=>{
+    const item = document.createElement('div');
+    item.className = 'cutItem' + (c.id===selectedCutId?' selected':'');
+    const thumb = document.createElement('canvas');
+    const tw = 40, th = 40;
+    thumb.width = tw; thumb.height = th;
+    const tctx = thumb.getContext('2d');
+    tctx.imageSmoothingEnabled = false;
+    const s = Math.min(tw/c.w, th/c.h);
+    tctx.drawImage(baseCanvas, c.x,c.y,c.w,c.h, (tw-c.w*s)/2,(th-c.h*s)/2, c.w*s, c.h*s);
+    if(c.removeBg && bgColor){
+      stripBackground(tctx, tw, th, bgColor, +removeBgTol.value);
+    }
+    item.appendChild(thumb);
+
+    const meta = document.createElement('div');
+    meta.className='cutMeta';
+    meta.innerHTML = `
+      <input type="text" value="${c.name}" data-f="name">
+      <div class="xy">
+        x<input type="number" value="${c.x}" data-f="x">
+        y<input type="number" value="${c.y}" data-f="y">
+        w<input type="number" value="${c.w}" data-f="w">
+        h<input type="number" value="${c.h}" data-f="h">
+        <label style="margin-left:4px;color:${c.removeBg?'var(--accent)':'var(--dim)'};cursor:pointer;">
+          <input type="checkbox" data-f="removeBg" ${c.removeBg?'checked':''} style="vertical-align:middle;width:auto;"> nền
+        </label>
+      </div>`;
+    meta.querySelectorAll('input').forEach(inp=>{
+      inp.addEventListener('click', e=>e.stopPropagation());
+      inp.addEventListener('change', ()=>{
+        const f = inp.dataset.f;
+        if(f==='removeBg'){ c.removeBg = inp.checked; }
+        else if(f==='name'){ c.name = inp.value; }
+        else { c[f] = Math.max(0, Math.round(+inp.value)); }
+        renderCutList(); redrawOverlay();
+      });
+    });
+    item.appendChild(meta);
+
+    const del = document.createElement('button');
+    del.className='delBtn'; del.textContent='✕';
+    del.addEventListener('click', (e)=>{ e.stopPropagation(); removeCut(c.id); });
+    item.appendChild(del);
+
+    item.addEventListener('click', ()=>{ selectedCutId=c.id; renderCutList(); redrawOverlay(); });
+    cutListEl.appendChild(item);
+  });
+}
+
+// ---------- overlay drawing ----------
+function redrawOverlay(){
+  if(!img) return;
+  octx.clearRect(0,0,natW,natH);
+
+  // pixel guide grid
+  const g = +gridOverlaySlider.value;
+  if(g>0){
+    octx.strokeStyle = 'rgba(255,255,255,0.10)'; octx.lineWidth = 1/scale;
+    for(let x=0;x<=natW;x+=g){ octx.beginPath(); octx.moveTo(x,0); octx.lineTo(x,natH); octx.stroke(); }
+    for(let y=0;y<=natH;y+=g){ octx.beginPath(); octx.moveTo(0,y); octx.lineTo(natW,y); octx.stroke(); }
+  }
+
+  // saved cuts
+  cuts.forEach(c=>{
+    octx.lineWidth = (c.id===selectedCutId? 2:1)/scale;
+    octx.strokeStyle = c.id===selectedCutId? '#5ee6c8' : 'rgba(255,138,92,0.85)';
+    octx.strokeRect(c.x+0.5, c.y+0.5, c.w-1, c.h-1);
+  });
+
+  // grid mode preview
+  if(mode==='grid'){
+    const rects = computeGridRects();
+    octx.lineWidth = 1/scale;
+    octx.strokeStyle = 'rgba(94,230,200,0.65)';
+    rects.forEach(r=>{ octx.strokeRect(r.x+0.5,r.y+0.5,r.w-1,r.h-1); });
+  }
+
+  // manual drag preview
+  if(mode==='manual' && dragging && dragStartImg && dragCurImg){
+    const r = normRect(dragStartImg, dragCurImg);
+    octx.lineWidth = 1.5/scale;
+    octx.strokeStyle = '#5ee6c8';
+    octx.fillStyle = 'rgba(94,230,200,0.12)';
+    octx.fillRect(r.x,r.y,r.w,r.h);
+    octx.strokeRect(r.x+0.5,r.y+0.5,r.w-1,r.h-1);
+  }
+}
+
+// ---------- export ----------
+async function renderCutCanvases(){
+  const out = [];
+  const needBg = cuts.some(c=>c.removeBg);
+  const bg = needBg ? getBgColorForRemoval() : null;
+  const tol = +removeBgTol.value;
+  for(const c of cuts){
+    const cnv = document.createElement('canvas');
+    cnv.width = c.w; cnv.height = c.h;
+    const cctx = cnv.getContext('2d');
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(baseCanvas, c.x, c.y, c.w, c.h, 0, 0, c.w, c.h);
+    if(c.removeBg && bg){ stripBackground(cctx, c.w, c.h, bg, tol); }
+    const safeName = (c.name||('cut_'+c.id)).replace(/[^a-zA-Z0-9_\-]/g,'_');
+    out.push({ safeName, canvas: cnv, meta:{ name: safeName, x: c.x, y: c.y, w: c.w, h: c.h, transparentBg: !!c.removeBg } });
+  }
+  return out;
+}
+
+function targetExportDir(){
+  const raw = (document.getElementById('exportDir').value || 'assets/sprites').trim().replace(/\\/g, '/');
+  const clean = raw.replace(/^\/+/, '').replace(/\/+$/, '');
+  return clean || 'assets/sprites';
+}
+
+function exportStatus(message, isError){
+  const el = document.getElementById('exportStatus');
+  el.textContent = message;
+  el.style.color = isError ? 'var(--danger)' : 'var(--accent)';
+}
+
+document.getElementById('exportZipBtn').addEventListener('click', async ()=>{
+  if(!cuts.length){ alert('Chưa có mảnh nào để xuất.'); return; }
+  if(typeof JSZip === 'undefined'){
+    exportStatus('JSZip (CDN) chưa nạp được — có thể offline. Hãy dùng "Ghi vào dự án".', true);
+    return;
+  }
+  exportStatus('Đóng gói .zip…');
+  const zip = new JSZip();
+  const rendered = await renderCutCanvases();
+  for(const r of rendered){
+    const blob = await new Promise(res=>r.canvas.toBlob(res, 'image/png'));
+    zip.file(r.safeName + '.png', blob);
+  }
+  zip.file('atlas.json', JSON.stringify({ source: 'sprite-sheet', frames: rendered.map(r=>r.meta) }, null, 2));
+  const content = await zip.generateAsync({type:'blob'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(content);
+  a.download = 'sprite-cuts.zip';
+  a.click();
+  exportStatus('✓ Đã tải sprite-cuts.zip');
+});
+
+document.getElementById('exportProjectBtn').addEventListener('click', async ()=>{
+  if(!(window.luaS30 && window.luaS30Ready)){
+    exportStatus('Chỉ ghi được vào dự án khi mở trong LuaS30 Studio (menu Công cụ → Tiện ích mở rộng).', true);
+    return;
+  }
+  if(!cuts.length){ alert('Chưa có mảnh nào để xuất.'); return; }
+  const dir = targetExportDir();
+  exportStatus(`Đang ghi ${cuts.length} mảnh vào ${dir}/…`);
+  const rendered = await renderCutCanvases();
+  const files = rendered.map(r=>({ path: dir + '/' + r.safeName + '.png', base64: r.canvas.toDataURL('image/png') }));
+  files.push({ path: dir + '/atlas.json', text: JSON.stringify({ source: 'sprite-sheet', frames: rendered.map(r=>r.meta) }, null, 2) });
+  window.luaS30.writeFiles(files, (result)=>{
+    if(result && result.ok && !(result.errors && result.errors.length)){
+      exportStatus(`✓ Đã ghi ${result.written.length} tệp vào ${dir}/ của dự án.`);
+      window.luaS30.notify(`đã ghi ${result.written.length} tệp sprite vào ${dir}/`, 'ok');
+    } else {
+      const detail = result && (result.error || (result.errors || []).join('; ')) || 'không rõ lỗi';
+      exportStatus('✗ ' + detail, true);
+    }
+  });
+});
+
+window.addEventListener('luas30-bridge-ready', ()=>{
+  const pill = document.getElementById('projInfo');
+  window.luaS30.project((info)=>{
+    if(info && info.root){ pill.textContent = 'dự án: ' + (info.name || ''); pill.title = info.root; }
+    else { pill.textContent = 'Studio: chưa mở dự án'; }
+  });
+});
+</script>
+</body>
+</html>

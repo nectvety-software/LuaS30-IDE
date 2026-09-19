@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from app.ui import palette
 from app.ui.icons import apply_icon
+from app.vxpui.icons import icon as chrome_icon
 
 from .code_editor import CodeEditor
 from .editor_pane import EditorPane
@@ -21,6 +22,19 @@ TEXT_EXTENSIONS = {
 }
 
 CLOSE_GLYPH_SIZE = 11
+
+# Icon nhỏ trên tab soạn thảo theo loại tệp (kiểu VS Code trong ảnh mẫu).
+_CODE_SUFFIXES = {".lua", ".py", ".js", ".c", ".h", ".cpp", ".hpp", ".css", ".html", ".ps1", ".bat"}
+_DATA_SUFFIXES = {".json", ".ini", ".cfg", ".csv", ".xml"}
+
+
+def file_tab_icon(path: Path) -> QIcon:
+    suffix = path.suffix.lower()
+    if suffix in _CODE_SUFFIXES:
+        return chrome_icon("fa5s.file-code", palette.AMBER)
+    if suffix in _DATA_SUFFIXES:
+        return chrome_icon("fa5s.file-alt", palette.ACCENT_LIGHT)
+    return chrome_icon("fa5s.file", palette.TEXT_3)
 
 
 class _TabCloseButton(QToolButton):
@@ -95,6 +109,7 @@ class EditorTabs(QTabWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("EditorTabs")
         self.setTabBar(StudioTabBar(self))
         self.setTabsClosable(True)
         self.tabBar().close_requested.connect(self.close_tab)
@@ -265,7 +280,7 @@ class EditorTabs(QTabWidget):
         editor.setPlainText(text)
         editor.document().setModified(False)
         self._connect_editor(editor)
-        index = self.addTab(pane, file_path.name)
+        index = self.addTab(pane, file_tab_icon(file_path), file_path.name)
         self.setTabToolTip(index, str(file_path))
         self.setCurrentIndex(index)
         self.file_opened.emit(file_path)

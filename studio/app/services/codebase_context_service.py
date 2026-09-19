@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.services.extension_service import ExtensionService
+
 IGNORED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__",
     "build", "release", "dist", ".idea", ".vscode", ".cache", "cache",
@@ -28,6 +30,22 @@ INSTRUCTION_NAMES = ("SKILLS.md", "SKILL.md", "PROMPT.md")
 INSTRUCTION_FILE_LIMIT = 64000
 INSTRUCTION_TOTAL_BUDGET = 160000
 
+# Bản đồ "lõi Lua MRE" mà một dự án không tự thấy được — đưa thẳng vào mọi
+# system prompt để agent biết chính xác chỗ phải đọc (tool "engine") thay vì
+# bịa API của nền tảng di động khác.
+ENGINE_CORE_ENTRIES = (
+    ("templates/basic/src/engine.lua", "wrapper Lua mỏng quanh bảng global `engine` — API mà dự án thật sự gọi"),
+    ("engine/src/runtime_lua.c", "chỗ đăng ký bảng global `engine` (C→Lua): mọi hàm engine.* có thật đều khai ở đây"),
+    ("templates/basic/main.lua", "điểm vào dự án chuẩn"),
+    ("templates/basic/conf.lua", "cấu hình VXPEngine (màn hình 240x320, tài nguyên)"),
+    ("templates/basic/project.json", "manifest build .vxp"),
+    ("sdk/luas30/abi/symbols.json", "bảng ký hiệu MRE ABI mà runtime ánh xạ tới"),
+    ("sdk/luas30/include/ls30/luas30_sdk.h", "API C của SDK"),
+    ("engine/", "runtime C + linker biên dịch .vxp"),
+    ("compat/devices", "hồ sơ thiết bị S30+ đã kiểm chứng"),
+    ("doc/ai/SKILL.md", "luật agent chính thức"),
+)
+
 
 @dataclass
 class ContextBundle:
@@ -41,6 +59,7 @@ class ContextBundle:
 class CodebaseContextService:
     def __init__(self, engine_root: Path) -> None:
         self.engine_root = Path(engine_root).resolve()
+        self.extension_service = ExtensionService(self.engine_root)
 
     @staticmethod
     def _safe_text_file(path: Path) -> bool:
@@ -86,6 +105,10 @@ class CodebaseContextService:
             "doc/ai/SKILLS.md", "doc/ai/SKILL.md", "doc/ai/PROMPT.md",
         ):
             candidates.append(self.engine_root/rel)
+        # Tài liệu của từng extension đã cài cũng là luật — mô tả đúng cách
+        # dùng tool của extension đó mà agent phải biết khi người dùng hỏi.
+        for manifest in self.extension_service.discover():
+            candidates.extend(manifest.instruction_docs())
 
         result, seen = [], set()
         for path in candidates:
@@ -212,6 +235,33 @@ class CodebaseContextService:
                 budget -= len(value)
         return selected
 
+    def engine_core_summary(self) -> str:
+        """Bản đồ ngắn lõi MRE của IDE — đường dẫn THẬT, chỉ liệt kê khi tồn tại,
+        kèm số dòng để agent biết độ lớn trước khi gọi tool `engine` đọc nội dung."""
+        lines = []
+        for rel, note in ENGINE_CORE_ENTRIES:
+            target = self.engine_root / rel
+            if target.is_file():
+                try:
+                    size = len(target.read_bytes().splitlines())
+                except OSError:
+                    size = 0
+                lines.append(f"- {rel} ({size} dòng) — {note}")
+            elif target.is_dir():
+                try:
+                    count = sum(1 for _ in target.iterdir())
+                except OSError:
+                    count = 0
+                lines.append(f"- {rel} ({count} mục) — {note}")
+        if not lines:
+            return ""
+        return (
+            "<engine_core root=\"LuaS30 IDE installation — outside any project\">\n"
+            "Đọc các tệp này bằng tool `engine` (op read/grep/glob/list) trước khi sửa "
+            "code chạm API engine; tuyệt đối không bịa hàm của nền tảng khác.\n"
+            + "\n".join(lines) + "\n</engine_core>"
+        )
+
     def build(self, project_root: Path | None, question: str, *, active_path: Path | None = None, active_text: str = "") -> ContextBundle:
         project = Path(project_root).resolve() if project_root else None
         tree, tree_count = self.project_tree(project)
@@ -234,6 +284,12 @@ class CodebaseContextService:
 
         sources = self.relevant_files(project, question, active_path=active_path, active_text=active_text)
         parts = ["<codebase_context>", "<project_structure>", tree, "</project_structure>"]
+        briefing = self.extension_service.agent_briefing()
+        if briefing:
+            parts.append(briefing)
+        core = self.engine_core_summary()
+        if core:
+            parts.append(core)
         if instruction_sections:
             parts += ["<instruction_documents>", *instruction_sections, "</instruction_documents>"]
         if sources:

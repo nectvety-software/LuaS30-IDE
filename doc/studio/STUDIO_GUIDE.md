@@ -10,8 +10,9 @@ CustomTitleBar (31px, frameless) — logo · brand · embedded menu · min/max/c
 Home page (QStackedWidget#MainStack page 0) — project cards
 Editor page (page 1):
   Toolbar (Run/Stop/Check/Build/Designer)
-  Explorer (DỰ ÁN) | Editor tabs + Bottom panel
-  StatusBar (path, cursor, profile, screen, App ID, version)
+  ActivityBar (46px rail: Explorer · Search · Console · Chat AI · Cài đặt)
+  Explorer ("EXPLORER - <PROJECT>") | Editor tabs + Bottom panel
+  StatusBar (path, cursor, Lua 5.1, UTF-8, Spaces: 4, profile, screen, App ID, version)
 Modal dialog "THIẾT BỊ · VXPEMU" (Devices + Chat AI panels)
 Frameless window "TÀI NGUYÊN · UI DESIGNER" (designer fills it; AssetsView is
 the second tab of the designer's left THÀNH PHẦN dock)
@@ -35,13 +36,53 @@ Facts that are easy to break:
 - `_enter_editor()` refuses without an open project — Home is the only
   project-less surface; tool tabs (Settings, Project Hub, doctors) live on the
   editor page.
-- The Devices/AI column is NOT a workspace column anymore: `VxpMainWindow.
-  _build_device_dialog()` packs `RightWorkspaceColumn` (device panel + CHAT AI
-  panel) into an application-modal `CustomDialog` opened from the "Công cụ"
-  menu ("Thiết bị · VXPEmu", Ctrl+Alt+D) or via `_set_ai_visible(True)`
-  (Chat AI toggle, Ctrl+Alt+I, "Ask AI" from the console). The dialog's X
-  hides it (`set_close_handler(dialog.hide)`) so the embedded EmulatorView is
-  never destroyed; the workspace splitter therefore has exactly 2 children.
+- The workspace splitter has 3 children: project column, editor+console
+  column, and the CHAT AI dock (`_build_ai_dock()` →
+  `PanelFrame("CHAT AI", show_header=False)` holding `AIChatView`) — a
+  VS Code-style right column, toggled by "Công cụ → Chat AI" (Ctrl+Alt+I),
+  the title-bar AI button, or `_set_ai_visible()` ("Ask AI" from the console).
+  It starts hidden; `_set_ai_visible(True)` guarantees a ~380px width on
+  first reveal.
+- Editor-region chrome (mockup parity): `_build_editor_page()` puts a 46px
+  `QFrame#ActivityBar` rail left of the workspace splitter — Explorer /
+  Search / Console / Chat AI buttons on top, Settings at the bottom
+  (`QToolButton#ActivityButton`, checked = cyan left indicator). Explorer and
+  Search share the left `PanelFrame` whose header title is set dynamically to
+  `EXPLORER - <PROJECT>` in `_apply_project()` (reset to `EXPLORER` in
+  `_clear_project_chrome()`); the inner `ExplorerPanel` header shows only the
+  uppercased project name (elided with `…` on narrow columns, full text in
+  its tooltip) plus the new-file/folder/collapse/refresh buttons. Clicking
+  the active rail icon hides the column (VS Code semantics); panel state is
+  read via `isHidden()`, never `isVisible()`, because child widgets report
+  False before the window is shown. Editor tabs carry per-file-type icons
+  (`file_tab_icon()` in `app/editor/editor_tabs.py`, colors from
+  `app.ui.palette`) and the active tab gets a 2px `@ACCENT` top border via
+  the `QTabWidget#EditorTabs QTabBar::tab` rules in `theme.py` (that
+  specificity is required to beat the generic `QTabBar::tab` rules appended
+  from `dark_theme.qss`). The status bar always shows `UTF-8` and
+  `Spaces: 4` badges (they are the first dropped when the window goes
+  <1000px wide).
+- `AIChatView` renders its own assistant chrome (no PanelFrame header):
+  header "AI Trợ lý" + sessions/new/settings/close buttons, a segmented
+  Chat / Context / Tools tab bar over a `QStackedWidget`, and on the Chat tab
+  a welcome card (avatar, model badge, Vietnamese greeting) with a 2×3 grid
+  of quick-action buttons that prefill the prompt — the card and the empty
+  transcript swap visibility once a session has messages. A persistent
+  "Ngữ cảnh" card (project chip, open-file chip refreshed by a 1.5s timer,
+  "Tự động" checkbox = `auto_context`) sits above the rounded composer whose
+  footer carries attach / access-mode / model-pill (opens provider settings)
+  / cyan send. Context tab = read-only context facts; Tools tab = the
+  AI ACTIVITY reasoning-summary frame + agent tool notes. Because
+  `dark_theme.qss` sets `QWidget { background:#0F1115 }`, labels placed on
+  lighter cards MUST get `background: transparent` in their own QSS rule.
+- The device panel is NOT a workspace column: `_build_device_dialog()` packs
+  only the THIẾT BỊ · VXPEMU `PanelFrame` (EmulatorView + Project Doctor row)
+  into an application-modal `CustomDialog` opened from the "Công cụ" menu
+  ("Thiết bị · VXPEmu", Ctrl+Alt+D). The dialog's X hides it
+  (`set_close_handler(dialog.hide)`) so the embedded EmulatorView is never
+  destroyed. The old `RightWorkspaceColumn` splitter and its
+  `workspace.right` session key were removed (session restore guards on
+  `len(sizes) != splitter.count()`, so old files simply skip).
 - The TÀI NGUYÊN panel is NOT in the left column anymore either:
   `app/vxpui/assets_studio_window.py` defines `AssetsStudioWindow`, a separate
   frameless top-level window (own `CustomTitleBar`, own menu bar

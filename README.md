@@ -22,6 +22,37 @@ Bản 1 là bản cập nhật tài liệu và hướng dẫn phát triển cho 
 - **Asset Manager / UI Designer / Emulator workflow** trong Studio.
 - **Smart Launcher**: kiểm tra dependency, chỉ update khi cần và hỗ trợ offline.
 
+## Cấu trúc thư mục
+
+```text
+LuaS30-IDE/
+├── VERSION · LICENSE · README.md · CHANGELOG.md   thông tin phát hành
+├── run.bat                 mở Studio (kèm validation dependency)
+├── build.bat / build_only.bat / build_single_exe.bat
+├── new_project.bat · install_silent.cmd · LuaS30-IDE.cmd/.vbs
+│                           ── các điểm vào gốc, giữ nguyên vị trí vì
+│                              tools/validate_complete.py + installer MSI neo vào
+├── studio/                 LuaS30 Studio (PySide6, chỉ chạy trên PC)
+│   ├── main.py             điểm vào
+│   └── app/                vxpui/ (chrome VXPEngine) · views/ · editor/ · services/ · core/
+├── tools/                  build/package scripts + validate_*.py (bộ kiểm tra)
+├── doc/                    TOÀN BỘ tài liệu markdown (mục lục: doc/INDEX.md)
+│   ├── studio/ · build/ · sdk/ · reference/ · platform/ · ai/ · legal/ ...
+│   └── release/            changelog/ + validation/ theo từng phiên bản
+├── wiki/                   wiki song ngữ vi/ + en/ (validate_wiki.py canh cặp)
+├── engine/ · sdk/luas30/   runtime C + Native SDK ls30_*
+├── vendor/lua-5.1.5/       nguồn Lua 5.1.5 đóng gói kèm
+├── toolchain/arm-gcc/      ARM GCC (gitignore — tải qua tools/dependency_manager.py)
+├── emulator/               VXPEmu (gitignore — bản deploy từ VXPEmu)
+├── templates/ · profiles/ · compat/   project mẫu + profile thiết bị + fixture firmware
+├── packaging/              Inno Setup / WiX cho bản MSI
+└── build/ · dist/          output (gitignore — xoá thoải mái)
+```
+
+Bộ ba `build/`, `dist/`, `.luas30-tmp/` là nơi chứa sản phẩm phụ — có thể xoá
+sạch mà không mất gì; mọi thứ cần quản lý đều nằm ở `studio/`, `tools/`,
+`doc/` và `wiki/`.
+
 ## Kiến trúc
 
 ```text
@@ -187,6 +218,7 @@ Xem `doc/reference/API.md`.
 
 Bắt đầu tại:
 
+- [`CHANGELOG.md`](CHANGELOG.md) — mọi thay đổi theo phiên bản (tóm tắt + link chi tiết).
 - [`doc/INDEX.md`](doc/INDEX.md) — mục lục tài liệu.
 - [`doc/getting-started/QUICKSTART.md`](doc/getting-started/QUICKSTART.md) — chạy Studio và tạo app đầu tiên.
 - [`doc/architecture/ARCHITECTURE.md`](doc/architecture/ARCHITECTURE.md) — kiến trúc engine/runtime/SDK.

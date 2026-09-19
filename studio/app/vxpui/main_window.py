@@ -35,6 +35,7 @@ from app.services.ai_change_service import AIChangeService, PreparedChangeSet
 from app.services.build_service import BuildService
 from app.services.compat_matrix_service import CompatMatrixService
 from app.services.emulator_service import EmulatorService
+from app.services.extension_service import ExtensionService
 from app.services.project_library import ProjectLibraryService, ProjectRecord
 from app.ui.about_dialog import AboutDialog
 from app.ui.mediatek_mre_dialog import MediaTekMREConfigDialog
@@ -107,6 +108,7 @@ class VxpMainWindow(QWidget):
         self.build_service = BuildService(self.engine_root, self)
         self.emulator_service = EmulatorService(self.engine_root, self)
         self.compat_matrix_service = CompatMatrixService(self.engine_root, self)
+        self.extension_service = ExtensionService(self.engine_root)
         self.runner = LuaRunner(self.build_service, self.emulator_service, self)
         self.ai_change_service = AIChangeService()
         self._ai_change_set: PreparedChangeSet | None = None
@@ -352,6 +354,12 @@ class VxpMainWindow(QWidget):
         toolchain_action = act("Toolchain Doctor", "fa5s.wrench")
         toolchain_action.triggered.connect(self._open_toolchain_doctor)
         tools_menu.addAction(toolchain_action)
+        extensions_menu = QMenu("Tiện ích mở rộng", tools_menu)
+        extensions_menu.setIcon(icon("fa5s.puzzle-piece"))
+        extensions_menu.aboutToShow.connect(
+            lambda _checked=False: self._populate_extensions_menu(extensions_menu)
+        )
+        tools_menu.addMenu(extensions_menu)
         settings_action = act("Cài đặt", "fa5s.cog")
         settings_action.triggered.connect(self._open_settings)
         tools_menu.addAction(settings_action)
@@ -411,9 +419,82 @@ class VxpMainWindow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._build_tool_bar())
-        layout.addWidget(self._build_content_area(), 1)
+        body = QWidget()
+        body.setObjectName("EditorBody")
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+        body_layout.addWidget(self._build_activity_bar())
+        body_layout.addWidget(self._build_content_area(), 1)
+        layout.addWidget(body, 1)
         layout.addWidget(self._build_status_bar())
         return page
+
+    def _build_activity_bar(self) -> QWidget:
+        """Thanh icon dọc trái kiểu VS Code: Explorer · Search · Console · AI · Settings."""
+        rail = QFrame()
+        rail.setObjectName("ActivityBar")
+        rail.setFixedWidth(46)
+        layout = QVBoxLayout(rail)
+        layout.setContentsMargins(0, 6, 0, 6)
+        layout.setSpacing(4)
+        self._activity_buttons: dict[str, QToolButton] = {}
+
+        def button(key: str, fa_name: str, tooltip: str, handler):
+            item = QToolButton()
+            item.setObjectName("ActivityButton")
+            item.setIcon(icon(fa_name))
+            item.setIconSize(QSize(17, 17))
+            item.setFixedSize(34, 34)
+            item.setCheckable(True)
+            item.setToolTip(tooltip)
+            item.clicked.connect(lambda _checked=False: handler())
+            self._activity_buttons[key] = item
+            layout.addWidget(item, 0, Qt.AlignmentFlag.AlignHCenter)
+            return item
+
+        button("explorer", "fa5s.folder", "Explorer — cây dự án (Ctrl+B)", self._activity_explorer)
+        button("search", "fa5s.search", "Tìm kiếm trong dự án", self._activity_search)
+        button("console", "fa5s.terminal", "Console, Problems, Terminal, HEX (Ctrl+J)",
+               self._toggle_console_panel)
+        button("ai", "fa5s.robot", "Chat AI (Ctrl+Alt+I)",
+               lambda: self._set_ai_visible(not self._ai_visible))
+        layout.addStretch(1)
+        button("settings", "fa5s.cog", "Cài đặt Studio", self._open_settings)
+        return rail
+
+    def _activity_explorer(self) -> None:
+        self._activity_show_pane(0)
+
+    def _activity_search(self) -> None:
+        self._activity_show_pane(1)
+
+    def _activity_show_pane(self, tab_index: int) -> None:
+        """Nhét icon Explorer/Search: đang mở đúng ngăn thì đóng, ngược lại mở+chọn ngăn."""
+        # isHidden() chứ không isVisible(): trước khi window hiện, isVisible()
+        # của mọi child đều False dù panel không bị ẩn.
+        if not self.project_panel_frame.isHidden():
+            if self.left_tabs.currentIndex() == tab_index:
+                self._toggle_left_column()
+                return
+            self.left_tabs.setCurrentIndex(tab_index)
+        else:
+            self.project_panel_frame.setVisible(True)
+            self.explorer_toggle_button.setChecked(True)
+            self.left_tabs.setCurrentIndex(tab_index)
+        self._update_activity_bar()
+        self._schedule_workspace_save()
+
+    def _update_activity_bar(self) -> None:
+        buttons = getattr(self, "_activity_buttons", None)
+        if not buttons:
+            return
+        left_visible = not self.project_panel_frame.isHidden()
+        left_index = self.left_tabs.currentIndex()
+        buttons["explorer"].setChecked(left_visible and left_index == 0)
+        buttons["search"].setChecked(left_visible and left_index == 1)
+        buttons["console"].setChecked(self._console_visible)
+        buttons["ai"].setChecked(self._ai_visible)
 
     def _build_tool_bar(self) -> QWidget:
         bar = QWidget()
@@ -492,7 +573,7 @@ class VxpMainWindow(QWidget):
         self.explorer_toggle_button.setFixedSize(29, 29)
         self.explorer_toggle_button.setCheckable(True)
         self.explorer_toggle_button.setChecked(True)
-        self.explorer_toggle_button.setToolTip("Ẩn/hiện cột Dự án + Tài nguyên (Ctrl+B)")
+        self.explorer_toggle_button.setToolTip("Ẩn/hiện Explorer (Ctrl+B)")
         self.explorer_toggle_button.clicked.connect(self._toggle_left_column)
         layout.addWidget(self.explorer_toggle_button)
 
@@ -544,7 +625,7 @@ class VxpMainWindow(QWidget):
         left_column.setChildrenCollapsible(False)
         left_column.setHandleWidth(4)
 
-        project_panel = PanelFrame("DỰ ÁN")
+        project_panel = PanelFrame("EXPLORER")
         self.project_panel_frame = project_panel
         self.left_panel_menu_button = project_panel.menu_button
         left_menu = QMenu(project_panel.menu_button)
@@ -624,6 +705,7 @@ class VxpMainWindow(QWidget):
         self.explorer.file_activated.connect(self.tabs.open_file)
         self.explorer.status_message.connect(self.show_status)
         self.search_panel.open_result.connect(self.open_location)
+        self.left_tabs.currentChanged.connect(lambda *_: self._update_activity_bar())
         self.find_bar.hide()
         self.tabs.cursor_info_changed.connect(self._update_cursor)
         self.tabs.file_saved.connect(self._file_saved)
@@ -648,6 +730,7 @@ class VxpMainWindow(QWidget):
         self.ai_chat.reject_changes_requested.connect(self._reject_ai_changes)
         for pane in (split, left_column, center_column):
             pane.splitterMoved.connect(lambda *_: self._schedule_workspace_save())
+        self._update_activity_bar()
         return split
 
     def _build_device_dialog(self) -> None:
@@ -691,7 +774,9 @@ class VxpMainWindow(QWidget):
 
     def _build_ai_dock(self) -> None:
         """CHAT AI — cột thứ ba của workspace, kiểu panel Chat của VS Code."""
-        ai_panel = PanelFrame("CHAT AI")
+        # AIChatView tự mang header "AI Trợ lý" + tab riêng nên bỏ header PanelFrame.
+        ai_panel = PanelFrame("CHAT AI", show_header=False)
+        ai_panel.set_content_margins(0, 0, 0, 0)
         self.ai_panel_frame = ai_panel
         self.ai_chat = AIChatView(self.engine_root)
         ai_panel.add_widget(self.ai_chat)
@@ -740,6 +825,10 @@ class VxpMainWindow(QWidget):
         layout.addWidget(self.status_path, 1)
 
         self.language_badge = QLabel("Lua 5.1")
+        self.encoding_badge = QLabel("UTF-8")
+        self.encoding_badge.setToolTip("Mã hóa tệp mà Studio đọc/ghi")
+        self.indent_badge = QLabel("Spaces: 4")
+        self.indent_badge.setToolTip("Kiểu thụt lề của trình soạn thảo")
         self.core_badge = QLabel("core lua-s30")
         self.target_badge = QLabel("MRE VXP")
         self.native_badge = QLabel("ARM + VXPEmu")
@@ -748,11 +837,13 @@ class VxpMainWindow(QWidget):
         self.version_badge = QLabel(f"v{self.version_text}" if self.version_text else "")
         # Thứ tự quyết định nhãn nào còn lại khi cửa sổ hẹp: App ID luôn giữ lại.
         self._status_optional_widgets = [
+            self.encoding_badge, self.indent_badge,
             self.target_badge, self.native_badge, self.language_badge,
             self.app_id_badge, self.core_badge,
         ]
         for widget in (
-            self.language_badge, self.core_badge, self.target_badge,
+            self.language_badge, self.encoding_badge, self.indent_badge,
+            self.core_badge, self.target_badge,
             self.native_badge, self.app_id_badge, self.version_badge,
         ):
             layout.addWidget(widget)
@@ -773,6 +864,7 @@ class VxpMainWindow(QWidget):
         self.stack.setCurrentWidget(self.editor_page)
         self.title_bar.set_home_mode(False)
         self.title_bar.set_project_name(f"{Path(self.session.root).name} • Lua VXP")
+        self._update_activity_bar()
         return True
 
     def show_initial(self) -> None:
@@ -947,6 +1039,7 @@ class VxpMainWindow(QWidget):
         if self.last_manifest:
             self.emulator_view.set_manifest(self.last_manifest)
         self.title_bar.set_project_name(f"{root.name} • Lua VXP")
+        self.project_panel_frame.title_label.setText(f"EXPLORER - {root.name}")
         self.status_path.setText(str(root))
         self.status_path.setToolTip(str(root))
         self._update_badges()
@@ -970,6 +1063,7 @@ class VxpMainWindow(QWidget):
         self.emulator_view.set_project(None)
         self.last_manifest = {}
         self.title_bar.set_project_name("")
+        self.project_panel_frame.title_label.setText("EXPLORER")
         self.status_path.setText("(chưa mở dự án)")
         self._update_badges()
 
@@ -1149,6 +1243,49 @@ class VxpMainWindow(QWidget):
             view.set_toolchain(self._toolchain_root, self._compiler_profile)
         return view
 
+    def _populate_extensions_menu(self, menu: QMenu) -> None:
+        """Nạp lại menu 'Tiện ích mở rộng' mỗi lần mở — thêm thư mục extension
+        mới vào engine_root/extensions là xuất hiện ngay, không cần khởi động lại."""
+        menu.clear()
+        installed = self.extension_service.discover(refresh=True)
+        if not installed:
+            empty = menu.addAction("(Chưa có tiện ích nào trong thư mục extensions/)")
+            empty.setEnabled(False)
+            return
+        for manifest in installed:
+            action = menu.addAction(f"{manifest.name}  ·  v{manifest.version}")
+            action.setIcon(icon(manifest.icon))
+            action.setToolTip(manifest.description or manifest.id)
+            action.triggered.connect(
+                lambda _checked=False, ext_id=manifest.id: self._open_extension(ext_id)
+            )
+
+    def _open_extension(self, extension_id: str):
+        manifest = self.extension_service.manifest(extension_id)
+        if manifest is None:
+            self.app_toast.show_message(
+                f"Không tìm thấy tiện ích mở rộng {extension_id!r} trong extensions/."
+            )
+            return None
+        if manifest.requires_project and not self._require_project(manifest.name):
+            return None
+
+        def factory():
+            from app.views.extension_host_view import ExtensionHostView
+
+            return ExtensionHostView(
+                manifest,
+                project_root_provider=lambda: self.session.root,
+                status_reporter=self.show_status,
+                on_files_written=lambda _paths: self._refresh_project_assets(),
+            )
+
+        self._enter_editor()
+        view = self.tabs.open_tool_tab(manifest.tool_key, manifest.name, factory, icon(manifest.icon))
+        if hasattr(view, "focus_webview"):
+            view.focus_webview()
+        return view
+
     def _require_project(self, feature: str) -> bool:
         if self.session.root:
             return True
@@ -1326,6 +1463,8 @@ class VxpMainWindow(QWidget):
             return self._open_compat_matrix() is not None
         if key == "toolchain-doctor":
             return self._open_toolchain_doctor() is not None
+        if key.startswith("extension:"):
+            return self._open_extension(key.split(":", 1)[1]) is not None
         return False
 
     def _schedule_workspace_save(self, *_args) -> None:
@@ -1342,8 +1481,9 @@ class VxpMainWindow(QWidget):
             for entry in group.get("tabs", []) if isinstance(group, dict) else []:
                 if isinstance(entry, dict) and entry.get("type") == "tool":
                     key = str(entry.get("key", ""))
-                    if key in _PERSISTENT_TOOL_TABS and key not in tool_keys:
-                        tool_keys.append(key)
+                    if key in _PERSISTENT_TOOL_TABS or key.startswith("extension:"):
+                        if key not in tool_keys:
+                            tool_keys.append(key)
         state = {
             "project": str(self.session.root) if self.session.root else None,
             "tool_tabs": tool_keys,
@@ -1361,7 +1501,6 @@ class VxpMainWindow(QWidget):
                 "sizes": self.workspace_split.sizes(),
                 "left": self.left_workspace_column.sizes(),
                 "center": self.center_workspace_column.sizes(),
-                "right": self.right_workspace_column.sizes(),
             },
             "build": {
                 "compiler_profile": self._compiler_profile,
@@ -1816,6 +1955,7 @@ class VxpMainWindow(QWidget):
             self.ai_toggle_action.setChecked(self._ai_visible)
             self.ai_toggle_action.blockSignals(False)
         self.ai_button.setChecked(self._ai_visible)
+        self._update_activity_bar()
         self._schedule_workspace_save()
 
     def _active_editor_context(self):
@@ -1958,6 +2098,7 @@ class VxpMainWindow(QWidget):
         visible = not self.project_panel_frame.isVisible()
         self.project_panel_frame.setVisible(visible)
         self.explorer_toggle_button.setChecked(visible)
+        self._update_activity_bar()
 
     def _toggle_console_panel(self) -> None:
         self._set_console_visible(not self._console_visible)
@@ -1986,6 +2127,7 @@ class VxpMainWindow(QWidget):
             and self.bottom.currentWidget() is self.bottom.terminal
         ):
             self.bottom.terminal.ensure_started()
+        self._update_activity_bar()
         self._schedule_workspace_save()
 
     def _set_console_action_visible(self, _visible: bool) -> None:

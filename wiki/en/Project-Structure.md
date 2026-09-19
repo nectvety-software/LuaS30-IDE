@@ -8,22 +8,22 @@ engine lives) and the **layout of a user project** (where your game lives).
 ## IDE repository
 
 ```text
-LuaS30-Engine/
-├── VERSION
-├── README.md
-├── LICENSE
+LuaS30-IDE/
+├── VERSION · LICENSE · README.md · CHANGELOG.md · requirements-studio.txt
 ├── run.bat                 launcher
 ├── new_project.bat         create a project
-├── build.bat               build + emulator
-├── build_only.bat          build only
-├── requirements-studio.txt
+├── build.bat / build_only.bat / build_single_exe.bat
+├── LuaS30-IDE.cmd · .vbs · install_silent.cmd   post-install entry points
+├── app-icon/               logo packaged into the exe/MSI
 ├── build/                  build output, runtime compat matrix
 ├── compat/                 synthetic MRE firmware manifests
-├── doc/                    all markdown documentation
+├── doc/                    all markdown documentation (index: doc/INDEX.md;
+│                           detailed changelog + validation: doc/release/)
 ├── emulator/               VXP emulator
 ├── engine/
 │   ├── src/                runtime_entry.c, runtime_lua.c, runtime_bridge.c
 │   └── linker/             luas30.ld
+├── packaging/              Inno Setup / WiX for the MSI build
 ├── profiles/               device compatibility profiles (JSON)
 ├── sdk/luas30/
 │   ├── include/ls30/       api.h base.h events.h graphics.h filesystem.h audio.h device.h compat.h
@@ -32,7 +32,8 @@ LuaS30-Engine/
 ├── templates/              basic/ and device_probe/
 ├── toolchain/arm-gcc/      bundled ARM GCC
 ├── tools/                  build tooling + validators
-└── vendor/lua-5.1.5/       Lua 5.1.5 source
+├── vendor/lua-5.1.5/       Lua 5.1.5 source
+└── wiki/                   bilingual wiki (vi/ + en/, strict 1-1 pairs)
 ```
 
 `studio/` is **PC only** — PySide6 is never packaged into a VXP.

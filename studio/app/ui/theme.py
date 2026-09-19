@@ -77,16 +77,13 @@ QToolButton#ActivityButton {
     background: transparent;
     color: @TEXT_5;
     font-size: 12px;
-    min-width: 48px;
-    max-width: 48px;
-    min-height: 48px;
-    max-height: 48px;
 }
-QToolButton#ActivityButton:hover { color: @TEXT; background: transparent; }
+QToolButton#ActivityButton:hover { color: @TEXT; background: @BG_HOVER; border-radius: 8px; }
 QToolButton#ActivityButton:checked {
     color: @TEXT;
-    background: transparent;
+    background: @BG_PRESSED;
     border-left: 2px solid @ACCENT;
+    border-radius: 8px;
 }
 QFrame#ExplorerPanel, QTabWidget#SideTabs::pane {
     background: @BG_INK;
@@ -94,11 +91,11 @@ QFrame#ExplorerPanel, QTabWidget#SideTabs::pane {
     border-right: 1px solid @BORDER;
 }
 QLabel#SidePanelTitle {
-    background: @BG_INK;
+    background: transparent;
     color: @TEXT_3;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    padding-left: 20px;
+    padding-left: 12px;
     letter-spacing: 0.4px;
     border-bottom: 1px solid transparent;
 }
@@ -186,6 +183,27 @@ QTabBar::tab:selected {
     border-top: 1px solid @ACCENT;
 }
 QTabBar::tab:hover { background: @BG_HOVER; color: @TEXT_2; }
+/* Tab vùng soạn thảo: icon loại tệp + vạch accent cyan trên tab đang mở
+   (selector đặc hiệu hơn nên thắng rule QTabBar::tab chung của dark_theme.qss). */
+QTabWidget#EditorTabs::pane { border: 0; background: @BG_SURFACE; }
+QTabWidget#EditorTabs QTabBar { background: @BG_INK; border: 0; }
+QTabWidget#EditorTabs QTabBar::tab {
+    background: @BG_INK;
+    color: @TEXT_4;
+    border: none;
+    border-right: 1px solid @BORDER;
+    border-top: 2px solid transparent;
+    margin-right: 0;
+    padding: 6px 10px;
+    min-width: 96px;
+    max-width: 180px;
+}
+QTabWidget#EditorTabs QTabBar::tab:selected {
+    background: @BG_SURFACE;
+    color: @TEXT;
+    border-top: 2px solid @ACCENT;
+}
+QTabWidget#EditorTabs QTabBar::tab:hover:!selected { background: @BG_HOVER; color: @TEXT_2; }
 /* nút đóng tab: do StudioTabBar tự tạo, thay pixmap đỏ mặc định của Qt */
 QToolButton#TabCloseButton {
     background: transparent;
@@ -622,11 +640,51 @@ APP_STYLE += _substitute(r"""
 QFrame#CenterWorkbench { background: @BG_INK; }
 QWidget#AIChatView { background: @BG_INK; border-left: 1px solid @BORDER; }
 QFrame#AIChatHeader { background: @BG_INK; border-bottom: 1px solid @BORDER; }
-QLabel#AIChatTitle { color: @TEXT; font-weight: 600; font-size: 12px; }
+QLabel#AIChatTitle { color: @TEXT; font-weight: 700; font-size: 13px; }
+QFrame#AIChatTabBar { background: @BG_INK; border-bottom: 1px solid @BORDER; }
+QPushButton#AIChatTab {
+    background: transparent; color: @TEXT_3; border: 1px solid transparent;
+    border-radius: 8px; min-height: 24px; padding: 0 10px; font-size: 11px;
+}
+QPushButton#AIChatTab:hover { background: @BG_HOVER; color: @TEXT_2; }
+QPushButton#AIChatTab:checked {
+    background: @BG_PRESSED; color: @TEXT; border-color: @BORDER_STRONG;
+    font-weight: 600;
+}
+QStackedWidget#AIChatPages, QWidget#AIChatPage { background: @BG_INK; }
+QFrame#AIChatStart { background: @BG_INK; }
+QFrame#AIWelcomeCard {
+    background: @BG_ALT; border: 1px solid @BORDER_STRONG; border-radius: 12px;
+}
+QLabel#AIWelcomeAvatar { background: @ACCENT; border-radius: 12px; }
+QLabel#AIWelcomeName { color: @TEXT; font-weight: 700; font-size: 12px; background: transparent; }
+QLabel#AIModelBadge {
+    color: @ACCENT; background: @BG_RAISED; border: 1px solid @BORDER_STRONG;
+    border-radius: 6px; padding: 1px 6px; font-size: 10px; font-weight: 600;
+}
+QLabel#AIWelcomeText { color: @TEXT_3; font-size: 11px; background: transparent; }
+QPushButton#AIQuickAction {
+    background: @BG_RAISED; color: @TEXT_2; border: 1px solid @BORDER_STRONG;
+    border-radius: 8px; min-height: 28px; padding: 0 8px; font-size: 11px;
+    text-align: left;
+}
+QPushButton#AIQuickAction:hover {
+    background: @BG_PRESSED; border-color: @BORDER_HOVER; color: @TEXT;
+}
 QLabel#AIContextBadge {
     color: @INFO; background: @BG_RAISED; border: 1px solid @BORDER;
     border-radius: 6px; padding: 2px 5px; font-size: 10px;
 }
+QFrame#AIContextCard { background: @BG_INK; border-top: 1px solid @BORDER; }
+QLabel#AIContextCardTitle { color: @TEXT_2; font-size: 11px; font-weight: 700; }
+QLabel#AIContextChip {
+    color: @TEXT_3; background: @BG_RAISED; border: 1px solid @BORDER;
+    border-radius: 6px; padding: 2px 6px; font-size: 10px;
+}
+QCheckBox#AIContextAuto { color: @INFO; font-size: 10px; spacing: 4px; }
+QLabel#AIContextCaption { color: @TEXT_4; font-size: 10px; font-weight: 600; }
+QLabel#AIContextValue { color: @TEXT_2; font-size: 11px; }
+QLabel#AIPageNote { color: @TEXT_4; font-size: 10px; }
 QToolButton#AIChatToolButton {
     min-width: 24px; max-width: 24px; min-height: 23px; max-height: 23px;
     background: transparent; border: 0; border-radius: 6px;
@@ -638,8 +696,8 @@ QTextBrowser#AIChatTranscript {
 }
 QFrame#AIChatComposer { background: @BG_INK; border-top: 1px solid @BORDER; }
 QPlainTextEdit#AIChatPrompt {
-    background: @BG_INK; color: @TEXT_2; border: 1px solid @BORDER_STRONG;
-    border-radius: 8px; padding: 5px 7px; font-size: 11px;
+    background: @BG_ALT; color: @TEXT_2; border: 1px solid @BORDER_STRONG;
+    border-radius: 8px; padding: 6px 9px; font-size: 11px;
 }
 QPlainTextEdit#AIChatPrompt:focus { border-color: @ACCENT; }
 QLabel#AIChatStatus { color: @TEXT_4; font-size: 10px; }
@@ -921,21 +979,24 @@ QLabel#AIAccessOptionCheck {
     font-size: 15px;
     font-weight: 700;
 }
-QLabel#AIProviderCompact {
-    color: @TEXT_4;
-    font-size: 10px;
+QPushButton#AIProviderCompact {
+    background: @BG_RAISED; color: @TEXT_3; border: 1px solid @BORDER_STRONG;
+    border-radius: 8px; min-height: 24px; padding: 0 8px; font-size: 10px;
+}
+QPushButton#AIProviderCompact:hover {
+    background: @BG_PRESSED; border-color: @BORDER_HOVER; color: @TEXT;
 }
 QPushButton#AIChatSendIcon {
     min-width: 28px;
     max-width: 28px;
     min-height: 28px;
     max-height: 28px;
-    border-radius: 6px;
-    background: @BG_PRESSED;
-    border: 1px solid @BORDER_STRONG;
+    border-radius: 8px;
+    background: @ACCENT;
+    border: 1px solid @ACCENT_HOVER;
 }
 QPushButton#AIChatSendIcon:hover {
-    background: @ACCENT;
+    background: @ACCENT_HOVER;
     border-color: @ACCENT_HOVER;
 }
 QPushButton#AIChatSendIcon[running="true"] {
@@ -1321,4 +1382,8 @@ QPushButton#GhostButton {
     color: @TEXT_2;
 }
 QPushButton#GhostButton:hover { background: @BORDER_STRONG; color: @TEXT; }
+
+QWidget#ExtensionHostHeader { background: @BG_INK; border-bottom: 1px solid @BORDER; }
+QWidget#ExtensionHostHeader QLabel { background: transparent; }
+QLabel#ExtensionHostTitle { color: @TEXT; font-size: 12px; font-weight: 700; }
 """)

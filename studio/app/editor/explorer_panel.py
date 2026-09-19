@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from app.ui.icons import apply_icon
@@ -18,6 +18,7 @@ class ExplorerPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("ExplorerPanel")
         self.project_root: Path | None = None
+        self._title_base = "EXPLORER"
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -26,7 +27,7 @@ class ExplorerPanel(QFrame):
         header = QFrame()
         header.setObjectName("ExplorerHeader")
         row = QHBoxLayout(header)
-        row.setContentsMargins(10, 4, 6, 4)
+        row.setContentsMargins(8, 3, 4, 3)
         row.setSpacing(2)
 
         self.title = QLabel("EXPLORER")
@@ -48,7 +49,7 @@ class ExplorerPanel(QFrame):
 
         for button in (self.new_file, self.new_folder, self.collapse, self.refresh):
             button.setObjectName("ExplorerToolButton")
-            button.setFixedSize(27, 25)
+            button.setFixedSize(24, 22)
             row.addWidget(button)
 
         self.tree = ProjectTree()
@@ -64,16 +65,34 @@ class ExplorerPanel(QFrame):
 
     def set_project_root(self, root: str | Path) -> None:
         self.project_root = Path(root).resolve()
-        self.title.setText(f"EXPLORER · {self.project_root.name.upper()}")
+        self._set_title(self.project_root.name.upper())
         self.tree.set_project_root(self.project_root)
         self.tree.show()
 
 
     def clear_project(self) -> None:
         self.project_root = None
-        self.title.setText("EXPLORER · NO PROJECT")
+        self._set_title("NO PROJECT")
         self.tree.clear_project_root()
         self.tree.hide()
+
+    def _set_title(self, text: str) -> None:
+        self._title_base = text
+        self.title.setToolTip(text)
+        self._update_title_text()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_title_text()
+
+    def _update_title_text(self) -> None:
+        """Elide tên dự án bằng '…' khi cột hẹp (QLabel không tự làm việc này)."""
+        buttons_width = 4 * 24 + 3 * 2 + 8 + 4  # 4 nút + spacing + lề hàng
+        available = self.width() - buttons_width - 12  # padding-left của label
+        metrics = self.title.fontMetrics()
+        self.title.setText(
+            metrics.elidedText(self._title_base, Qt.TextElideMode.ElideRight, max(24, available))
+        )
 
     def _base(self) -> Path | None:
         selected = self.tree.selected_path()

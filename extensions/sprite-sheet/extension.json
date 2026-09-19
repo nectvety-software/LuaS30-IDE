@@ -1,0 +1,11 @@
+{
+  "id": "sprite-sheet",
+  "name": "Sprite Sheet Cutter",
+  "version": "1.0.0",
+  "description": "Cắt sprite sheet 2D thành PNG rời + atlas.json và ghi thẳng vào thư mục tài nguyên của dự án đang mở.",
+  "author": "LuaS30 Studio",
+  "type": "webview",
+  "entry": "ui/index.html",
+  "icon": "fa5s.crop-alt",
+  "requiresProject": true
+}

@@ -16,8 +16,8 @@ if "tabs.close_all_requested.connect(self.close_all)" not in groups:
 for token in (
     "split.addWidget(left_column)",
     "split.addWidget(center_column)",
-    "right_column = self._build_device_dialog()",
-    "dialog.add_body_widget(right_column, 1)",
+    "split.addWidget(self.ai_panel_frame)",
+    "dialog.add_body_widget(device_panel, 1)",
     "center_column.addWidget(editor_host)",
     "center_column.addWidget(self.bottom)",
     "ai_panel.add_widget(self.ai_chat)",

@@ -8,22 +8,22 @@ Trang này mô tả hai thứ khác nhau: **cấu trúc repo IDE** (nơi engine 
 ## Repo IDE
 
 ```text
-LuaS30-Engine/
-├── VERSION
-├── README.md
-├── LICENSE
+LuaS30-IDE/
+├── VERSION · LICENSE · README.md · CHANGELOG.md · requirements-studio.txt
 ├── run.bat                 launcher
 ├── new_project.bat         tạo project
-├── build.bat               build + emulator
-├── build_only.bat          chỉ build
-├── requirements-studio.txt
+├── build.bat / build_only.bat / build_single_exe.bat
+├── LuaS30-IDE.cmd · .vbs · install_silent.cmd   điểm vào sau khi cài
+├── app-icon/               logo đóng vào exe/MSI
 ├── build/                  output build, runtime compat matrix
 ├── compat/                 fixture manifest firmware (MRE)
-├── doc/                    toàn bộ tài liệu markdown
+├── doc/                    toàn bộ tài liệu markdown (mục lục doc/INDEX.md;
+│                           changelog + validation chi tiết: doc/release/)
 ├── emulator/               VXP emulator
 ├── engine/
 │   ├── src/                runtime_entry.c, runtime_lua.c, runtime_bridge.c
 │   └── linker/             luas30.ld
+├── packaging/              Inno Setup / WiX cho bản MSI
 ├── profiles/               profile tương thích thiết bị (JSON)
 ├── sdk/luas30/
 │   ├── include/ls30/       api.h base.h events.h graphics.h filesystem.h audio.h device.h compat.h
@@ -32,7 +32,8 @@ LuaS30-Engine/
 ├── templates/              basic/ và device_probe/
 ├── toolchain/arm-gcc/      ARM GCC đã bundle
 ├── tools/                  build tooling + validator
-└── vendor/lua-5.1.5/       source Lua 5.1.5
+├── vendor/lua-5.1.5/       source Lua 5.1.5
+└── wiki/                   wiki song ngữ (vi/ + en/, cặp 1-1)
 ```
 
 `studio/` **chỉ chạy trên PC** — PySide6 không bao giờ được đóng vào VXP.

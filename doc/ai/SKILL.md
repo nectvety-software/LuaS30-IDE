@@ -888,3 +888,61 @@ Keep the `AI Changes` diff review surface and backup existing files before repla
 
 Provider Settings must expose Test Connection, Apply and Save & Close. API keys entered in
 that dialog are session-only.
+
+## Lua programming for S30+ MRE .vxp (ChatAI specialization)
+
+ChatAI trong Studio làm việc chuyên cho **Lua 5.1 trên Nokia S30+ MRE**, chạy
+trên VXPEngine 240x320 — không phải Love2D, không phải Android, không phải
+Lua 5.3/5.4. Quy tắc bắt buộc:
+
+1. **Chỉ dùng API có thật.** Trước khi sửa code chạm engine, đọc lõi bằng tool
+   `engine` (khối `luas30-tool`, op `read`/`grep`/`glob`/`list`, đường dẫn tương
+   đối IDE-root, chỉ các thư mục `templates`, `sdk`, `engine`, `compat`,
+   `doc/ai`, `extensions`). Nguồn sự thật:
+   - `templates/basic/src/engine.lua` — wrapper Lua mỏng quanh bảng global
+     `engine`; đây là API mức dự án mà `main.lua`/`src/` thật sự gọi.
+   - `engine/src/runtime_lua.c` — chỗ đăng ký bảng global `engine` (C→Lua);
+     mọi hàm `engine.*` có thật đều được ghi danh tại đây, và hàm nào không xuất
+     hiện ở đó thì **không tồn tại** để gọi.
+   - `sdk/luas30/abi/symbols.json` — bảng ký hiệu MRE ABI mà runtime ánh xạ tới.
+   - `compat/devices/` — hồ sơ thiết bị S30+ đã kiểm chứng.
+   Bản đồ các tệp này luôn có trong `<engine_core>` của system prompt.
+2. **Cấu trúc dự án chuẩn**: `main.lua` (điểm vào) + `conf.lua` (cấu hình
+   VXPEngine) + `src/` (module riêng, `require` bằng dấu chấm `/` theo
+   project.json) + `project.json` (manifest build .vxp). Giữ tương thích
+   Lua 5.1: không goto-labelled kiểu 5.2, không integer division `//`,
+   không bitwise operators — dùng `math.floor` và module bit có sẵn.
+3. **Bộ nhớ thấp**: tránh bảng lớn tạm thời, tránh chuỗi động trong vòng lặp
+   vẽ; tài nguyên ảnh nạp một lần qua engine, giải phóng khi đổi màn hình.
+4. **Bàn phím S30+**: chỉ xử lý các khóa engine phát ra (theo `engine.lua`);
+   không giả lập chuột/touch.
+5. Khi người dùng mô tả công việc khớp một **extension đã cài** (xem
+   `<installed_extensions>` trong system prompt), ưu tiên hướng dẫn dùng
+   extension đó thay vì viết script cắt/tải/xử lý thủ công.
+
+## Extension system (standard + authoring)
+
+Mỗi extension là một thư mục trong `extensions/<id>/` của bản cài IDE:
+
+- `extension.json` — manifest: `id` (bắt buộc trùng tên thư mục), `name`,
+  `version`, `description`, `author`, `type` (hiện chỉ `"webview"`), `entry`
+  (đường dẫn HTML tương đối trong thư mục extension), `icon` (tên Font Awesome
+  `fa5s.*`), `requiresProject` (mặc định `true`).
+- `ui/index.html` — giao diện web, chạy trong QWebEngineView, mở từ
+  **Công cụ → Tiện ích mở rộng**.
+- `SKILLS.md` (hoặc `SKILL.md`/`PROMPT.md`) — tài liệu mô tả chức năng + hợp
+  đồng cầu nối; ChatAI tự nạp làm luật khi trả lời.
+
+Cầu nối Studio tiêm `window.luaS30` (chỉ tồn tại khi mở trong IDE — trang phải
+chạy được cả ở trình duyệt thường):
+
+- `luaS30.project(cb)` → `{root, name}` hoặc `{root: null}`.
+- `luaS30.writeFiles(files, cb)` → ghi `{path, text}` / `{path, base64}` tương
+  đối trong thư mục dự án đang mở; callback `{ok, written, errors}`. Chặn
+  đường dẫn thoát dự án, thư mục ẩn/sinh tự động và tệp bí mật.
+- `luaS30.notify(message, level)` → status bar Studio.
+- Sự kiện `luas30-bridge-ready` báo cầu nối đã sẵn sàng.
+
+Extension hợp lệ được phát hiện động (không cần restart); manifest lỗi bị bỏ
+qua và ghi vào `ExtensionService.last_errors`. Mẫu chuẩn đang hoạt động:
+`extensions/sprite-sheet/`.
