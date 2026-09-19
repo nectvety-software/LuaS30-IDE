@@ -795,6 +795,7 @@ files are backed up under:
 
 before atomic replacement.
 
+<<<<<<< HEAD
 ## Ghi công
 
 LuaS30 IDE được dựng trên nền **rất nhiều** dự án mã nguồn mở và công cụ của
@@ -838,3 +839,5 @@ Chi tiết pháp lý và ghi công đầy đủ:
 Trong ứng dụng, xem **About → Credits** và **About → Environment** để biết phiên
 bản thư viện thực sự đang chạy.
 
+=======
+>>>>>>> 39056b4db73e48e5cf3d3262e3aedfda3b6b9cd9
