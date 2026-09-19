@@ -134,6 +134,7 @@ QPushButton {
     color: @TEXT_2;
 }
 QPushButton:hover { background: @BORDER_STRONG; color: @TEXT; }
+QPushButton#PhoneKey { padding: 0 4px; min-height: 0; }
 QPushButton#PrimaryButton { background: @ACCENT; border-color: @ACCENT; color: @ON_ACCENT; }
 QPushButton#PrimaryButton:hover { background: @ACCENT_HOVER; }
 QPushButton#SuccessButton { background: @GREEN; border-color: @GREEN; color: @ON_ACCENT; }
@@ -1412,17 +1413,33 @@ QLabel#ExtensionMarketIcon { background: @BG_PRESSED; border-radius: 8px; }
 QLabel#ExtensionMarketTitle { color: @TEXT; font-size: 13px; font-weight: 700; background: transparent; }
 QLabel#ExtensionMarketDesc { color: @TEXT_3; font-size: 11px; background: transparent; }
 QLabel#ExtensionMarketMeta { color: @TEXT_5; font-size: 10px; background: transparent; }
+QToolButton#ExtensionMarketInstall {
+    background: @ACCENT;
+    border: 0;
+    border-radius: 6px;
+    color: @ON_ACCENT;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 14px;
+}
+QToolButton#ExtensionMarketInstall:hover { background: @ACCENT_HOVER; }
 QToolButton#ExtensionMarketOpen {
-    background: transparent;
-    border: 1px solid @BORDER_STRONG;
-    border-radius: 8px;
-    color: @TEXT_2;
-    font-size: 16px;
-    font-weight: 600;
-}
-QToolButton#ExtensionMarketOpen:hover {
     background: @BG_PRESSED;
-    border: 1px solid @BORDER_HOVER;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 6px;
     color: @TEXT;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 14px;
 }
+QToolButton#ExtensionMarketOpen:hover { background: @BORDER_STRONG; }
+QToolButton#ExtensionMarketUninstall {
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: @TEXT_4;
+    font-size: 10px;
+    padding: 6px 8px;
+}
+QToolButton#ExtensionMarketUninstall:hover { background: @BG_PRESSED; color: @RED; }
 """)

@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPlainTextEdit,
-    QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QPushButton, QSplitter, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from app.services.ai_change_service import PreparedChange, PreparedChangeSet
@@ -28,7 +28,9 @@ class _DiffText(QPlainTextEdit):
             block = self.document().findBlockByNumber(number)
             if not block.isValid():
                 continue
-            selection = QPlainTextEdit.ExtraSelection()
+            # PySide6 khong phoi ExtraSelection tren QPlainTextEdit; no song
+            # tren lop cha QTextEdit.
+            selection = QTextEdit.ExtraSelection()
             selection.cursor = QTextCursor(block)
             selection.cursor.clearSelection()
             fmt = QTextCharFormat()

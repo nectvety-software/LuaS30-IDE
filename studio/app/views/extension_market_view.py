@@ -2,8 +2,10 @@
 
 Mỗi tiện ích trong ``extensions/`` (theo chuẩn ``extension.json`` do
 ``ExtensionService`` khám phá) hiển thị thành một card: ô icon bo góc bên
-trái, tên + mô tả hai dòng + hàng "from · version · added", nút mở ở góc
-phải — bố cục theo đúng ảnh mẫu người dùng, nền tối dùng token palette.
+trái, tên + mô tả hai dòng + hàng "from · version · added", và nút trạng
+thái ở góc phải theo đúng luồng VS Code — chưa cài thì "Cài đặt", đã cài
+thì "Mở" kèm "Gỡ cài đặt". Cài xong là icon tiện ích xuất hiện trên cột
+activity bar bên trái (main window nối callback ``on_change``).
 """
 from __future__ import annotations
 
@@ -41,8 +43,19 @@ def _two_lines(text: str, limit: int = 118) -> str:
 
 
 class ExtensionCard(QFrame):
-    def __init__(self, manifest, on_open: Callable[[str], None], parent=None) -> None:
+    def __init__(
+        self,
+        service,
+        manifest,
+        on_open: Callable[[str], None],
+        on_change: Callable[[], None] | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
+        self.service = service
+        self.manifest = manifest
+        self.on_open = on_open
+        self.on_change = on_change
         self.setObjectName("ExtensionMarketCard")
         self.setFixedHeight(92)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -76,18 +89,56 @@ class ExtensionCard(QFrame):
         text_col.addWidget(meta)
         layout.addLayout(text_col, 1)
 
-        open_btn = QToolButton(self)
-        open_btn.setObjectName("ExtensionMarketOpen")
-        open_btn.setFixedSize(34, 34)
-        open_btn.setText("+")
-        open_btn.setToolTip(f"Mở {manifest.name}")
-        open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        open_btn.clicked.connect(lambda _checked=False: on_open(manifest.id))
-        layout.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        self.uninstall_btn = QToolButton(self)
+        self.uninstall_btn.setObjectName("ExtensionMarketUninstall")
+        self.uninstall_btn.setText("Gỡ cài đặt")
+        self.uninstall_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.uninstall_btn.clicked.connect(self._uninstall)
+        self.state_btn = QToolButton(self)
+        self.state_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.state_btn.clicked.connect(self._activate)
+        actions.addWidget(self.uninstall_btn)
+        actions.addWidget(self.state_btn)
+        layout.addLayout(actions, 0)
 
-    def mousePressEvent(self, event) -> None:  # click toàn card = mở
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.findChild(QToolButton).click()
+        self._render_actions()
+
+    def _activate(self) -> None:
+        if self.service.is_installed(self.manifest.id):
+            self.on_open(self.manifest.id)
+        elif self.service.set_installed(self.manifest.id, True):
+            self._render_actions()
+            if self.on_change is not None:
+                self.on_change()
+
+    def _uninstall(self) -> None:
+        if self.service.set_installed(self.manifest.id, False):
+            self._render_actions()
+            if self.on_change is not None:
+                self.on_change()
+
+    def _render_actions(self) -> None:
+        installed = self.service.is_installed(self.manifest.id)
+        self.state_btn.setObjectName(
+            "ExtensionMarketOpen" if installed else "ExtensionMarketInstall"
+        )
+        self.state_btn.setText("Mở" if installed else "Cài đặt")
+        self.state_btn.setToolTip(
+            f"Mở {self.manifest.name}" if installed else f"Cài {self.manifest.name}"
+        )
+        self.uninstall_btn.setVisible(installed)
+        # Đổi objectName lúc runtime thì QSS không áp lại — buộc style/unpolish.
+        self.state_btn.style().unpolish(self.state_btn)
+        self.state_btn.style().polish(self.state_btn)
+
+    def mousePressEvent(self, event) -> None:  # click card đã cài = mở
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self.service.is_installed(self.manifest.id)
+        ):
+            self.on_open(self.manifest.id)
             event.accept()
             return
         super().mousePressEvent(event)
@@ -98,12 +149,14 @@ class ExtensionMarketView(QWidget):
         self,
         service,
         on_open: Callable[[str], None],
+        on_change: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("ExtensionMarketPage")
         self.service = service
         self.on_open = on_open
+        self.on_change = on_change
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -163,5 +216,9 @@ class ExtensionMarketView(QWidget):
             self.body_layout.addWidget(empty)
         else:
             for manifest in manifests:
-                self.body_layout.addWidget(ExtensionCard(manifest, self.on_open))
+                self.body_layout.addWidget(
+                    ExtensionCard(
+                        self.service, manifest, self.on_open, self.on_change
+                    )
+                )
         self.body_layout.addStretch(1)

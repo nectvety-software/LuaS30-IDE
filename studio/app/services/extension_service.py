@@ -118,6 +118,8 @@ def load_manifest(extension_dir: Path) -> tuple[ExtensionManifest | None, str]:
 class ExtensionService:
     """Quét ``engine_root/extensions`` và cung cấp manifest đã kiểm tra."""
 
+    INSTALLED_FILE_NAME = "extensions_installed.json"
+
     def __init__(self, engine_root: Path) -> None:
         self.engine_root = Path(engine_root).resolve()
         self.extensions_dir = self.engine_root / EXTENSIONS_DIR_NAME
@@ -157,3 +159,46 @@ class ExtensionService:
             return ""
         sections = [item.agent_summary() for item in installed]
         return "<installed_extensions>\n" + "\n".join(sections) + "\n</installed_extensions>"
+
+    # ------------------------------------------------------ trạng thái "cài"
+    # Marketplace kiểu VS Code: khám phá ≠ cài. Chỉ extension đã cài mới có
+    # icon trên activity bar; danh sách id lưu trong appdata để còn giữa phiên.
+
+    def installed_file(self) -> Path:
+        from app.core.paths import config_dir
+
+        return config_dir() / self.INSTALLED_FILE_NAME
+
+    def installed_ids(self) -> set[str]:
+        try:
+            raw = json.loads(self.installed_file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return set()
+        if not isinstance(raw, list):
+            return set()
+        known = {item.id.lower() for item in self.discover()}
+        return {str(x).lower() for x in raw if str(x).lower() in known}
+
+    def is_installed(self, extension_id: str) -> bool:
+        return str(extension_id or "").strip().lower() in self.installed_ids()
+
+    def set_installed(self, extension_id: str, installed: bool) -> bool:
+        manifest = self.manifest(extension_id)
+        if manifest is None:
+            return False
+        ids = self.installed_ids()
+        key = manifest.id.lower()
+        if installed:
+            ids.add(key)
+        else:
+            ids.discard(key)
+        path = self.installed_file()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(sorted(ids), ensure_ascii=False, indent=1),
+                encoding="utf-8",
+            )
+        except OSError:
+            return False
+        return True

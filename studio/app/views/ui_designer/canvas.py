@@ -109,6 +109,8 @@ class DesignerScene(QGraphicsScene):
     itemSelected = Signal(object)  # DesignerItem hoặc None
     widgetAdded = Signal(object)   # DesignerItem vừa được thêm
     layersChanged = Signal()       # danh sách lớp đổi: thêm/xoá/đổi thứ tự/xoay
+    # thành phần có chữ vừa được kích đúp — view mở QLineEdit phủ tại chỗ đó
+    textEditRequested = Signal(object)
     # BẤT KỲ thay đổi nào làm nội dung tệp .lua khác đi — kể cả kéo thành phần
     # hay sửa ô trong INSPECTOR (những thao tác KHÔNG phát `layersChanged`).
     # Đây là tín hiệu để tự động lưu biết "canvas đang bẩn".
@@ -129,6 +131,10 @@ class DesignerScene(QGraphicsScene):
         # báo thay đổi bị nuốt, nếu không thì vừa mở tệp đã bị coi là "bẩn" và
         # tự động lưu ghi đè ngược lại chính tệp vừa đọc.
         self.bulk = False
+        # clipboard nội bộ của canvas (Ctrl+C / Ctrl+V) — danh sách dict item
+        self._clipboard: list[dict] = []
+        # (item, 'move'|'resize') đang bị tương tác — view vẽ nhãn "x, y  w×h"
+        self._interaction: tuple | None = None
         self.selectionChanged.connect(self._on_selection_changed)
         # mọi thay đổi cấu trúc lớp (thêm/xoá/đổi thứ tự/xoay) đều làm nội dung
         # tệp .lua khác đi -> coi là "bẩn". Kéo/nhập liệu phát riêng từ item.
@@ -456,10 +462,224 @@ class DesignerScene(QGraphicsScene):
                 fixed += 1
         return fixed
 
+    # ------------------------------------------------ tương tác đang diễn ra
+    def begin_interaction(self, item: DesignerItem, kind: str):
+        """Item báo đang bị kéo/resize — view vẽ nhãn "x, y  w×h" trực tiếp."""
+        self._interaction = (item, kind)
+
+    def end_interaction(self):
+        if self._interaction is not None:
+            self._interaction = None
+            self.update()
+
+    def interaction(self) -> tuple | None:
+        return self._interaction
+
+    # ------------------------------------------------ sửa chữ tại chỗ
+    def begin_text_edit(self, item: DesignerItem):
+        """DesignerItem kích đúp — phát cho view mở QLineEdit phủ lên thành phần."""
+        self.textEditRequested.emit(item)
+
+    # ------------------------------------------------ chọn nhiều
+    def selected_widgets(self) -> list[DesignerItem]:
+        """Thành phần đang chọn, theo thứ tự lớp TRÊN-trước."""
+        selected = {id(it) for it in self.selectedItems()}
+        return [it for it in self.layer_items() if id(it) in selected]
+
+    def select_all_widgets(self) -> int:
+        self.clearSelection()
+        count = 0
+        for it in self.widget_items():
+            if it.isVisible():
+                it.setSelected(True)
+                count += 1
+        return count
+
+    # ------------------------------------------------ clipboard (Ctrl+C / Ctrl+V)
+    def copy_selected(self) -> int:
+        sel = self.selected_widgets()
+        if sel:
+            self._clipboard = [it.to_dict() for it in sel]
+        return len(sel)
+
+    def has_clipboard(self) -> bool:
+        return bool(self._clipboard)
+
+    def _add_clone(self, data: dict, taken: set[str], offset: float) -> DesignerItem:
+        """Tạo bản sao từ dict: ID mới không trùng, lệch `offset` px, trong màn hình."""
+        clone = DesignerItem.from_dict(data)
+        clone.set_name(unique_id(str(data.get("name") or clone.name), taken))
+        taken.add(clone.name)
+        w, h = clone.rect().width(), clone.rect().height()
+        x, y = clamp_to_screen(float(data.get("x", 0)) + offset,
+                               float(data.get("y", 0)) + offset, w, h)
+        clone.setPos(x, y)
+        self.addItem(clone)
+        return clone
+
+    def paste_clipboard(self, offset: float = 8.0) -> int:
+        """Dán toàn bộ clipboard thành một nhóm đang được chọn."""
+        if not self._clipboard:
+            return 0
+        taken = self.taken_names()
+        order = self.layer_items()
+        self.clearSelection()
+        pasted = []
+        for data in self._clipboard:
+            clone = self._add_clone(dict(data), taken, offset)
+            order.insert(0, clone)
+            self.widgetAdded.emit(clone)
+            pasted.append(clone)
+        self._assign_z(order)
+        for it in pasted:
+            it.setSelected(True)
+        self.layersChanged.emit()
+        return len(pasted)
+
+    def duplicate_selected(self, offset: float = 8.0) -> int:
+        """Nhân bản MỌI thành phần đang chọn (Ctrl+D trên nhiều lớp như Canva)."""
+        sel = self.selected_widgets()
+        if not sel:
+            return 0
+        taken = self.taken_names()
+        order = self.layer_items()
+        self.clearSelection()
+        clones = []
+        for it in sel:
+            clone = self._add_clone(it.to_dict(), taken, offset)
+            order.insert(0, clone)
+            self.widgetAdded.emit(clone)
+            clones.append(clone)
+        self._assign_z(order)
+        for it in clones:
+            it.setSelected(True)
+        self.layersChanged.emit()
+        return len(clones)
+
+    # ------------------------------------------------ di chuyển bàn phím
+    def _position_in_screen(self, item: DesignerItem, x: float, y: float):
+        if item.rotation():
+            return item._clamp_for_rotation(x, y)
+        return clamp_to_screen(x, y, item.rect().width(), item.rect().height())
+
+    def nudge_selection(self, dx: float, dy: float) -> int:
+        """Đưa các thành phần đang chọn đi (dx, dy) px — phím mũi tên, Shift = 10px."""
+        moved = 0
+        for it in self.selected_widgets():
+            if it.locked:
+                continue
+            x, y = self._position_in_screen(it, it.pos().x() + dx,
+                                            it.pos().y() + dy)
+            it.setPos(x, y)
+            moved += 1
+        return moved
+
+    # ------------------------------------------------ khoá lớp
+    def toggle_lock_selection(self) -> int:
+        """Khoá nếu CHƯA khoá hết, ngược lại mở khoá toàn bộ nhóm đang chọn."""
+        sel = self.selected_widgets()
+        if sel:
+            target = not all(it.locked for it in sel)
+            for it in sel:
+                it.set_locked(target)
+        return len(sel)
+
+    # ------------------------------------------------ căn chỉnh & phân bố
+    def align_selection(self, mode: str) -> int:
+        """Căn trái/giữa/phải (left/hcenter/right) hoặc trên/giữa/dưới
+        (top/vcenter/bottom).
+
+        Một thành phần -> căn theo khung màn hình 240×320; nhiều thành phần ->
+        căn theo hộp bao chung của chúng (giống Canva/Figma).
+        """
+        sel = [it for it in self.selected_widgets() if not it.locked]
+        if not sel:
+            return 0
+        boxes = [it.aligned_bounds() for it in sel]
+        if len(sel) == 1:
+            ref = QRectF(SCREEN_RECT)
+        else:
+            ref = boxes[0]
+            for box in boxes[1:]:
+                ref = ref.united(box)
+        moved = 0
+        for item, box in zip(sel, boxes):
+            dx = dy = 0.0
+            if mode == "left":
+                dx = ref.left() - box.left()
+            elif mode == "hcenter":
+                dx = ref.center().x() - box.center().x()
+            elif mode == "right":
+                dx = ref.right() - box.right()
+            elif mode == "top":
+                dy = ref.top() - box.top()
+            elif mode == "vcenter":
+                dy = ref.center().y() - box.center().y()
+            elif mode == "bottom":
+                dy = ref.bottom() - box.bottom()
+            else:
+                return 0
+            if dx or dy:
+                x, y = self._position_in_screen(item, item.pos().x() + dx,
+                                                item.pos().y() + dy)
+                item.setPos(x, y)
+                moved += 1
+        return moved
+
+    def distribute_selection(self, axis: str) -> int:
+        """Giãn đều tâm ≥3 thành phần đang chọn dọc trục 'h' hoặc 'v'."""
+        sel = [it for it in self.selected_widgets() if not it.locked]
+        if len(sel) < 3:
+            return 0
+        keyf = (lambda b: b.center().x()) if axis == "h" else \
+            (lambda b: b.center().y())
+        pairs = sorted(((it, it.aligned_bounds()) for it in sel),
+                       key=lambda p: keyf(p[1]))
+        first, last = keyf(pairs[0][1]), keyf(pairs[-1][1])
+        span = last - first
+        steps = len(pairs) - 1
+        for index in range(1, steps):
+            item, box = pairs[index]
+            target = first + span * index / steps
+            dx = target - box.center().x() if axis == "h" else 0.0
+            dy = target - box.center().y() if axis != "h" else 0.0
+            x, y = self._position_in_screen(item, item.pos().x() + dx,
+                                            item.pos().y() + dy)
+            item.setPos(x, y)
+        return len(pairs)
+
+    def bring_selection_to_front(self) -> int:
+        sel = self.selected_widgets()
+        if not sel:
+            return 0
+        rest = [it for it in self.layer_items() if not it.isSelected()]
+        # selected_widgets() đã theo thứ tự TRÊN-trước — giữ nguyên nội bộ
+        self.set_layer_order(sel + rest)
+        return len(sel)
+
+    def send_selection_to_back(self) -> int:
+        sel = self.selected_widgets()
+        if not sel:
+            return 0
+        rest = [it for it in self.layer_items() if not it.isSelected()]
+        self.set_layer_order(rest + sel)
+        return len(sel)
+
 
 class DesignerView(QGraphicsView):
+    """Khung nhìn canvas kiểu Canva:
+
+      * Ctrl+cuộn lăn / Ctrl+±/0 — phóng to thu nhỏ (0.45×..4×)
+      * Chuột giữa hoặc Space+giữ chuột trái — kéo vùng nhìn (pan)
+      * Kéo khung chọn hoặc Shift+bấm — chọn nhiều thành phần
+      * Mũi tên (±1px) / Shift+mũi tên (±10px) — tinh chỉnh vị trí đang chọn
+      * Ctrl+C / Ctrl+V — sao chép/dán; Ctrl+A — chọn tất cả
+      * Chuột phải — menu Nhân bản / Khoá / Đưa lên đầu / Xoá…
+      * Kích đúp thành phần có chữ — sửa chữ ngay tại chỗ
+    """
+
     MIN_ZOOM = 0.45
-    MAX_ZOOM = 2.0
+    MAX_ZOOM = 4.0  # zoom tối đa khi bấm nút / phím; mặc định vừa khung vẫn ~2x
 
     def __init__(self, scene: DesignerScene, parent=None):
         super().__init__(scene, parent)
@@ -471,6 +691,8 @@ class DesignerView(QGraphicsView):
         self.setFrameShape(QGraphicsView.NoFrame)
         self.setAlignment(Qt.AlignCenter)
         self.setTransformationAnchor(QGraphicsView.AnchorViewCenter)
+        # kéo khung trên nền trống = chọn nhiều (Canva/Figma đều vậy)
+        self.setDragMode(QGraphicsView.RubberBandDrag)
 
         # dot grid nền (kiểu Figma) vẽ bằng background brush pattern
         pm = QPixmap(16, 16)
@@ -489,6 +711,15 @@ class DesignerView(QGraphicsView):
         # drawForeground chỉ việc vẽ, không phải sửa trạng thái scene mỗi lần vẽ)
         self._drop_origin: tuple[float, float] | None = None
 
+        # pan bằng chuột giữa / Space+trái
+        self._panning = False
+        self._pan_last = QPointF()
+        self._space_held = False
+        # trình sửa chữ tại chỗ (QLineEdit phủ lên viewport)
+        self._text_editor = None
+        self._text_target = None
+        scene.textEditRequested.connect(self._open_text_editor)
+
     # ---------------- auto fit ----------------
     def showEvent(self, event):
         super().showEvent(event)
@@ -496,6 +727,8 @@ class DesignerView(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        # trình sửa chữ đặt theo toạ độ viewport — cỡ canvas đổi là lệch, chốt luôn
+        self._close_text_editor()
         self._fit_to_view()
 
     def _fit_to_view(self):
@@ -538,12 +771,176 @@ class DesignerView(QGraphicsView):
 
     # ---------------- bàn phím ----------------
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
-            removed = self._scene.remove_items(self._scene.selectedItems())
+        key = event.key()
+        mods = event.modifiers()
+        ctrl = bool(mods & Qt.ControlModifier)
+
+        if key in (Qt.Key_Delete, Qt.Key_Backspace) and not ctrl:
+            removed = self._scene.remove_items(
+                [it for it in self._scene.selectedItems()
+                 if isinstance(it, DesignerItem) and not it.locked])
             if removed:
                 event.accept()
                 return
+        if ctrl:
+            if key == Qt.Key_C:
+                self._scene.copy_selected()
+                event.accept()
+                return
+            if key == Qt.Key_V:
+                self._scene.paste_clipboard()
+                event.accept()
+                return
+            if key == Qt.Key_A:
+                self._scene.select_all_widgets()
+                event.accept()
+                return
+            if key in (Qt.Key_Plus, Qt.Key_Equal, Qt.Key_BracketLeft):
+                self.zoom_in()
+                event.accept()
+                return
+            if key in (Qt.Key_Minus, Qt.Key_Underscore, Qt.Key_BracketRight):
+                self.zoom_out()
+                event.accept()
+                return
+            if key == Qt.Key_0:
+                self.reset_zoom()
+                event.accept()
+                return
+        if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
+            step = 10.0 if mods & Qt.ShiftModifier else 1.0
+            dx = -step if key == Qt.Key_Left else (step if key == Qt.Key_Right else 0.0)
+            dy = -step if key == Qt.Key_Up else (step if key == Qt.Key_Down else 0.0)
+            if self._scene.nudge_selection(dx, dy):
+                event.accept()
+                return
+        if key == Qt.Key_Space and not mods:
+            # giữ Space = chế độ "bàn tay": mọi cú kéo trái đều pan canvas
+            if not self._space_held:
+                self._space_held = True
+                if not self._panning:
+                    self.viewport().setCursor(Qt.OpenHandCursor)
+            event.accept()
+            return
+        if key == Qt.Key_Escape:
+            self._close_text_editor()
+            self._scene.clearSelection()
+            event.accept()
+            return
         super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            self._space_held = False
+            if not self._panning:
+                self.viewport().unsetCursor()
+        super().keyReleaseEvent(event)
+
+    # ---------------- pan: chuột giữa hoặc Space + chuột trái ----------------
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MiddleButton or (
+                event.button() == Qt.LeftButton and self._space_held):
+            self._panning = True
+            self._pan_last = event.position()
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._panning:
+            delta = event.position() - self._pan_last
+            self._pan_last = event.position()
+            h_bar = self.horizontalScrollBar()
+            v_bar = self.verticalScrollBar()
+            h_bar.setValue(h_bar.value() - round(delta.x()))
+            v_bar.setValue(v_bar.value() - round(delta.y()))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._panning and event.button() in (Qt.MiddleButton, Qt.LeftButton):
+            self._panning = False
+            self.viewport().setCursor(
+                Qt.OpenHandCursor if self._space_held else Qt.ArrowCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    # ---------------- menu chuột phải ----------------
+    def contextMenuEvent(self, event):
+        from PySide6.QtWidgets import QMenu
+
+        scene_pos = self.mapToScene(event.pos())
+        hit = next((it for it in self._scene.items(scene_pos)
+                    if isinstance(it, DesignerItem)), None)
+        if hit is not None and not hit.isSelected():
+            self._scene.clearSelection()
+            hit.setSelected(True)
+
+        menu = QMenu(self)
+        # QAction luôn phát triggered(checked) — bọc để không tham số nào rơi
+        # nhầm vào đối số mặc định của hàm scene (vd offset của paste)
+        def act(fn):
+            return lambda _checked=False: fn()
+
+        if self._scene.selected_widgets():
+            menu.addAction("Nhân bản", act(self._scene.duplicate_selected))
+            menu.addAction("Sao chép", act(self._scene.copy_selected))
+            menu.addSeparator()
+            locked = hit is not None and hit.locked
+            menu.addAction("Mở khoá" if locked else "Khoá lại",
+                           act(self._scene.toggle_lock_selection))
+            menu.addAction("Đưa lên đầu", act(self._scene.bring_selection_to_front))
+            menu.addAction("Đưa xuống cuối", act(self._scene.send_selection_to_back))
+            menu.addSeparator()
+            menu.addAction("Xoá", act(self._delete_selected))
+            menu.addSeparator()
+        menu.addAction("Dán", act(self._scene.paste_clipboard))
+        menu.addAction("Chọn tất cả", act(self._scene.select_all_widgets))
+        menu.exec(event.globalPos())
+
+    def _delete_selected(self):
+        self._scene.remove_items(
+            [it for it in self._scene.selectedItems()
+             if isinstance(it, DesignerItem) and not it.locked])
+
+    # ---------------- sửa chữ ngay trên canvas (kiểu Canva) ----------------
+    def _open_text_editor(self, item: DesignerItem):
+        self._close_text_editor()
+        from PySide6.QtWidgets import QLineEdit
+
+        box = self.mapFromScene(item.aligned_bounds()).boundingRect()
+        editor = QLineEdit(self.viewport())
+        editor.setText(item.text)
+        editor.setGeometry(box.adjusted(1, 1, -1, -1))
+        font = editor.font()
+        font.setPointSizeF(max(7.5, min(13.0, box.height() * 0.42)))
+        editor.setFont(font)
+        editor.setAlignment(Qt.AlignCenter)
+        editor.setStyleSheet(
+            f"QLineEdit {{ border: 1px solid {palette.ACCENT};"
+            f" background: {palette.BG_INK}; color: {palette.TEXT};"
+            " padding: 0 2px; }")
+        editor.returnPressed.connect(self._close_text_editor)
+        editor.editingFinished.connect(self._close_text_editor)
+        editor.show()
+        editor.setFocus()
+        editor.selectAll()
+        self._text_editor = editor
+        self._text_target = item
+
+    def _close_text_editor(self):
+        editor, item = self._text_editor, self._text_target
+        if editor is None:
+            return
+        self._text_editor = None
+        self._text_target = None
+        # chỉ ghi khi thành phần vẫn còn trên canvas (bản ghi nhớ đã bị xoá giữa chừng)
+        if item is not None and item.scene() is self._scene:
+            item.set_text(editor.text().rstrip())
+        editor.deleteLater()
 
     # ---------------- kéo thả từ palette ----------------
     def _begin_drop(self, event):
@@ -594,10 +991,25 @@ class DesignerView(QGraphicsView):
         event.acceptProposedAction()
 
     def drawForeground(self, painter, rect):
-        """Vẽ lớp phủ: đường dóng căn chỉnh + khung xem trước khi kéo từ palette."""
+        """Vẽ lớp phủ: đường dóng + khung xem trước kéo-thả + nhãn khi kéo/resize."""
         super().drawForeground(painter, rect)
         self._draw_guides(painter)
         self._draw_drop_preview(painter)
+        self._draw_interaction_badge(painter)
+
+    def _draw_interaction_badge(self, painter):
+        """Nhãn "x, y  w×h" sống động trên thành phần đang bị kéo/resize."""
+        state = self._scene.interaction()
+        if not state:
+            return
+        item, _kind = state
+        if item.scene() is not self._scene:
+            return
+        box = QRectF(item.pos().x(), item.pos().y(),
+                     item.rect().width(), item.rect().height())
+        painter.save()
+        self._draw_drop_badge(painter, box)
+        painter.restore()
 
     def _draw_guides(self, painter):
         """Đường căn gạch nét: XANH khi dóng với thành phần khác, VÀNG khi dóng

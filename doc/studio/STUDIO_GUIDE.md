@@ -178,18 +178,36 @@ Asset workflow dùng để quản lý resource của project. Với S30+ nên ư
 Designer tập trung màn hình nhỏ 240×320 (QVGA của Nokia S30+). Bố cục:
 
 ```text
-[toolbar]  màn hình mới · lưu+xuất Lua · nhập ảnh · nhập âm thanh · hít dính · zoom
+[toolbar]  màn hình mới · lưu+xuất Lua · hoàn tác/đi lại · nhập ảnh · nhập âm thanh · hít dính · zoom
 [MÀN HÌNH] combo chọn màn hình · [+] tạo mới · [⋮] đổi tên / nhân bản / xoá / mở thư mục
 [breadcrumb]
 [THÀNH PHẦN]  [canvas 240×320]  [INSPECTOR]  [LỚP · ID]
 ```
 
 - **Canvas** — khung điện thoại 240×320, kéo-thả thành phần, hít dính căn chỉnh
-  (đường xanh = thẳng hàng thành phần, đường vàng = thẳng với khung), zoom
-  `Ctrl +/−`, giữ `Alt` khi kéo để tạm tắt hít dính.
+  (đường xanh = thẳng hàng thành phần, đường vàng = thẳng với khung), zoom tới
+  4× bằng `Ctrl +/−` (đặt lại `Ctrl+0`), giữ `Alt` khi kéo để tạm tắt hít dính.
   Khi đang kéo từ palette: khung màn hình sáng lên (nét liền — nơi sẽ nhận thành
   phần), bóng thành phần hiện ở đúng vị trí sắp rơi (nét gạch) kèm nhãn
   `x, y  w×h`. Thả ở đâu thành phần cũng bị kẹp nằm trọn trong khung.
+- **Chỉnh sửa kiểu Canva**:
+  - *Hoàn tác / đi lại* (`Ctrl+Z` / `Ctrl+Shift+Z` hoặc `Ctrl+Y`) theo từng bước,
+    giữ tối đa 60 trạng thái; kéo thả, resize, sửa chữ, khoá lớp… đều vào lịch sử.
+  - *Chọn nhiều* bằng khung cao-su (giữ chuột trái kéo trên nền) hoặc `Shift`+click;
+    `Ctrl+A` chọn tất cả.
+  - *Resize 8 tay nắm* (4 góc + 4 cạnh) — kéo mép nào đổi mép đó, tối thiểu 4px,
+    luôn kẹp trong màn hình.
+  - *Tinh chỉnh* bằng phím mũi tên (1px, `Shift` = 10px).
+  - *Sao chép/dán* (`Ctrl+C` / `Ctrl+V`) — bản dán tự cấp ID duy nhất.
+  - *Căn chỉnh / phân bố* trong menu chuột phải: trái/giữa/phải, trên/giữa/dưới
+    (1 thành phần thì dóng theo khung màn hình), phân bố đều theo hàng/cột (≥3).
+  - *Khoá lớp* (menu chuột phải hoặc nút trong menu) — thành phần bị khoá không
+    kéo/resize/nudge/Xoá được, viền chọn thành nét chấm; trạng thái khoá lưu
+    xuống `ui_design.json` (khoá `lock`).
+  - *Sửa chữ ngay trên canvas* — kích đúp thành phần có chữ (Button/Label/…)
+    mở ô nhập tại chỗ, Enter chốt, Escape huỷ.
+  - *Kéo vùng nhìn*: giữ `Space` + chuột trái, hoặc con lăn chuột giữa.
+  - Nhãn `x, y  w×h` hiện live khi đang kéo di chuyển hoặc resize.
 - **THÀNH PHẦN** — 18 loại chia 3 nhóm (GIAO DIỆN / BỐ CỤC / ĐỒ HỌA) + ảnh và
   âm thanh quét từ `assets/` của project. Kéo vào canvas hoặc bấm để thêm.
 - **INSPECTOR** — ID, vị trí, kích thước, màu tô, góc xoay, nội dung chữ.
@@ -538,9 +556,13 @@ at startup by `app/services/extension_service.py`, listed dynamically under the
 (key `extension:<id>`, restored by the workspace session file).
 
 `Công cụ → Tiện ích mở rộng → Cửa hàng tiện ích mở rộng…` opens the marketplace tab
-(key `extensions-market`, also persisted): one card per installed extension — icon
-tile, name, two-line description, `from · version · added` footer and a `+` button
-that opens the extension (clicking the card works too).
+(key `extensions-market`, also persisted): one card per discovered extension — icon
+tile, name, two-line description, `from · version · added` footer and a VS Code-style
+state button. Discovery ≠ installation: a card starts with **Cài đặt** (Install);
+installing records the id in `<appdata>/config/extensions_installed.json`, flips the
+card to **Mở** + **Gỡ cài đặt**, and adds the extension's icon to the left activity
+bar (rebuilt by `VxpMainWindow._refresh_activity_extensions`). Clicking an activity
+bar icon or an installed card opens the extension tab.
 `ExtensionMarketView` lives in `app/views/extension_market_view.py`.
 
 Manifest fields (`extension.json`):
@@ -558,7 +580,7 @@ Folder layout (reference implementation: `extensions/sprite-sheet/`):
 extensions/sprite-sheet/
   extension.json     # manifest above
   ui/index.html      # entry page (plain HTML+JS, loaded via file://)
-  SKILLS.md          # optional agent law — loaded into ChatAI context bundle
+  SKILLS.md          # optional agent doc — exposed to ChatAI as an on-demand skill
 ```
 
 `ExtensionHostView` (`app/views/extension_host_view.py`) hosts a `QWebEngineView` with a
@@ -575,15 +597,83 @@ reused from the Qt resource, so nothing is bundled). The page gets:
   paths and blocked names (`.env`, `.git`, …). The result reports per-file errors,
   and the explorer/asset views refresh after a successful batch.
 
-### ChatAI specialization and the `engine` tool
+### ChatAI specialization: `scope=engine`, the SKILLS system, and the `problems` tool
 
-The agent protocol (`TOOL_NAMES`) adds a read-only `engine` tool that inspects the IDE
-installation itself — only `templates/`, `sdk/`, `engine/`, `compat/`, `doc/ai/` and
-`extensions/` — with ops `read | list | glob | grep`. The context bundle
-(`CodebaseContextService`) embeds `<installed_extensions>` (manifest briefing +
-`SKILLS.md` of every extension) and `<engine_core>` (pointer list at the real Lua→C
-boundary: `templates/basic/src/engine.lua` is a thin wrapper over the global `engine`
-table registered in `engine/src/runtime_lua.c`). The system prompt tells the model to
-verify engine APIs with the `engine` tool instead of assuming mobile-Lua/love2d
-functions, and to prefer documented extension workflows.
+The agent protocol (`TOOL_NAMES`) exposes `read | grep | glob | ui_design | asset |
+skill | problems`. A separate `engine` tool used to duplicate read/grep/glob on another root;
+it was merged into an argument: add `"scope":"engine"` to any of the three read
+tools to open the IDE installation itself — only `templates/`, `sdk/`, `engine/`,
+`compat/`, `doc/ai/` and `extensions/`. Legacy `{"tool":"engine","args":{"op":…}}`
+calls are normalized by the parser, so an old-model answer still works. The real
+Lua→C boundary is `templates/basic/src/engine.lua` (thin wrapper) over the
+`luaL_Reg funcs[]` table loaded by `luas30_bridge_open` in
+`engine/src/runtime_bridge.c` — a function absent there does not exist, and the
+system prompt forces verification instead of invented love2d/mobile-Lua APIs.
+
+Skills (Cline-style, on-demand): `SkillService`
+(`app/services/skill_service.py`) discovers procedure documents with YAML-ish
+frontmatter (`name`, `description`) from
+
+```text
+<project>/skills/<name>/SKILL.md      (also <project>/.luas30/skills/)
+<ide>/doc/ai/skills/<name>/SKILL.md   (also <ide>/skills/)
+<extension>/skills/…                  (plus the extension's root SKILLS.md)
+```
+
+Only the INDEX (name + description + source) goes into every system prompt as
+`<agent_skills>`; the full text is fetched with
+`{"tool":"skill","args":{"op":"read","name":"…"}}`. This removed the old
+per-turn duplication where every extension `SKILLS.md` was injected in full AND
+re-readable through the engine tool. Four starter skills ship with the IDE:
+`engine-api-check`, `vxp-build-run`, `s30plus-ui-design`, `problems-autofix`.
+`/skills` in the chat composer lists what is discoverable. Project skills win
+name collisions over engine ones. Multiple `luas30-tool` blocks in one answer
+now run sequentially (all results return before the conversation continues)
+instead of only the first one. Always-on law documents (`SKILLS.md`, `SKILL.md`,
+`PROMPT.md` at project/engine roots) are unchanged and still injected in full.
+
+The `problems` tool (`{"tool":"problems","args":{"op":"list"|"count"}}`) reads
+the IDE's live PROBLEMS panel: severity, project-relative path, line:column,
+message and a numbered code snippet per entry (capped at `ProblemsView.MAX_ITEMS`
+rows; `count` reports the true total). Its data lives in the main window, so the
+handler is in `AIChatView` and the text comes from
+`MainWindow._ai_problems_snapshot` wired through `ai_chat.set_problems_provider`.
+The composer's default access mode is now **Edit automatically** (Cline-Act
+style): `luas30-edit` blocks are applied straight into the project (with backups
+under `.luas30/ai-backups`) and the agent loop continues automatically, so the
+recommended fix loop is problems → analyze → edit → re-run problems until clean
+→ build (see the `problems-autofix` skill).
+
+Every applied edit batch also renders a Cursor-style summary card inside the
+chat transcript (`AIChatView._change_card_html`): header "Đã sửa N tệp" with
+total `+added / −removed` (green/red, from `PreparedChange.added_lines/
+removed_lines` passed by `MainWindow._apply_ai_changes` as `files=`), a
+`Review` link that reopens the AI Changes diff tab (last applied set is kept in
+`_ai_last_applied` and shown with `mark_applied`), per-file rows, and a
+`Hiển thị thêm N tệp` collapse after `CARD_VISIBLE_FILES = 3` rows. Links use
+`x-luas30://` hrefs handled by `transcript.anchorClicked`
+(`setOpenLinks(False)`), and card history entries (`role:"card"`) are filtered
+out of provider request payloads. Validator: `tools/validate_ai_change_card.py`.
+
+Models that ignore the fenced JSON protocol (Gemini/Ling-style) often emit
+native XML calls — `<tool_call=read>` or a bare open tag with
+`<arg_key>/<arg_value>` pairs. `parse_agent_response` translates those too
+(`_xml_tool_calls`/`_xml_to_actions` in `ai_agent_protocol.py`): aliases
+(`read_file`, `search_files`, …), nameless calls inferred from their args
+(`path`+`start_line` → read, `pattern` → grep/glob, `op` → skill/problems/…),
+legacy `engine` calls normalized to `scope=engine`, and `write_file`/`edit_file`
+turned into `CodeEditAction`s so edits still flow through the auto-apply
+pipeline. Source-valued keys (`content`, `find`, `replace`) keep every byte;
+XML blocks are stripped from the visible transcript text. Fenced JSON wins on
+duplicates. Validator: `tools/validate_ai_tool_call_xml.py`.
+
+`tools/e2e_chat_ai_agent.py` is the automated agent-loop regression test:
+headless, no API key — it stubs `AIRequestThread` with an 8-turn scripted model
+that mixes fenced JSON and raw XML calls, then drives the REAL `AIChatView`
+loop against a temp project (mirroring `MainWindow`'s prepare/apply wiring).
+The agent must produce a screen with button/label/image/textbox/card in
+`.luas30/ui_design.json`, a real PNG asset, auto-applied `main.lua` write +
+find/replace edits (two "Đã sửa N tệp" cards) and a `problems` read — 14
+checks; on failure it prints a per-turn diagnosis of where the agent stopped
+interacting with the project.
 

@@ -35,6 +35,7 @@ Trường tuỳ chọn của một item (chỉ ghi khi khác mặc định):
     fill    — màu tô riêng, "#rrggbb"
     rot     — góc xoay quanh tâm, độ
     hidden  — lớp đang bị ẩn ở bảng LAYERS, không vẽ trong game
+    lock    — lớp bị khoá trên canvas (không kéo/resize được)
 
 Tương thích ngược: `version: 1` (bản đầu tiên) là một danh sách item phẳng ở
 khoá `items` — khi đọc sẽ được nâng thành màn hình `main`.
@@ -135,6 +136,8 @@ def _coerce_item(raw: dict) -> dict | None:
         item["rot"] = rot
     if raw.get("hidden"):
         item["hidden"] = True
+    if raw.get("lock"):
+        item["lock"] = True
     return item
 
 

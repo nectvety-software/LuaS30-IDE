@@ -45,6 +45,9 @@ def main() -> int:
     require(stage / "emulator" / "VXPEmu.exe")
     require(stage / "tools" / "build.py")
     require(stage / "app-icon" / "icon.ico")
+    # Thieu qss nay trong ban frozen = chrome VXPEngine mat moi selector, cua
+    # so frameless trong suot (loi hien thi Home page tren may that).
+    require(stage / "app" / "vxpui" / "resources" / "dark_theme.qss")
     version_file = require(stage / "VERSION")
     version = version_file.read_text(encoding="utf-8").strip()
     if not version:

@@ -60,6 +60,12 @@ def main() -> int:
     if target.exists():
         shutil.rmtree(target)
     shutil.move(str(frozen), str(target))
+    # LuaS30IDE doc VERSION tu thu muc chua exe; thieu no thi app bao
+    # "unknown" va lam nhiem setup_state.json (hoi dialog thiet lap lan dau
+    # o lan chay that tiep theo).
+    version_file = ROOT / "VERSION"
+    if version_file.is_file():
+        shutil.copy2(version_file, target / "VERSION")
     shutil.rmtree(work, ignore_errors=True)
     shutil.rmtree(distpath, ignore_errors=True)
 

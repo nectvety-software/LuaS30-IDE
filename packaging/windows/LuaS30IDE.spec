@@ -14,7 +14,13 @@ a = Analysis(
     [str(ROOT / "studio" / "main.py")],
     pathex=[str(ROOT / "studio")],
     binaries=[],
-    datas=[],
+    # dark_theme.qss doc tai runtime theo goc _MEIPASS (= canh exe); thieu no
+    # thi _stylesheet() mat toan bo selector chrome cua VXPEngine va cua so
+    # frameless (WA_TranslucentBackground) trong suot — UI vo.
+    datas=[
+        (str(ROOT / "studio" / "app" / "vxpui" / "resources" / "dark_theme.qss"),
+         "app/vxpui/resources"),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

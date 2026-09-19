@@ -38,8 +38,9 @@ theo tên tệp tài liệu gốc.
   `extension:<id>` (lưu/restore qua workspace session).
 - Trang "Cửa hàng tiện ích mở rộng" (`ExtensionMarketView`) dạng card nền
   tối theo ảnh mẫu: ô icon bo góc, tên, mô tả hai dòng, hàng
-  "from · version · added", nút `+` mở tiện ích; tab `extensions-market`
-  được lưu lại giữa các phiên.
+  "from · version · added"; luồng cài kiểu VS Code — nút "Cài đặt" →
+  "Mở"+"Gỡ cài đặt", state lưu `config/extensions_installed.json`, và
+  icon tiện ích đã cài xuất hiện trên activity bar trái như VS Code.
 - `ExtensionHostView`: host QWebEngineView + cầu nối QWebChannel
   `window.luaS30` (extension/project/notify/writeFiles); ghi tệp bị giới
   hạn trong thư mục dự án, chặn `..`, tên tuyệt đối, tệp bí mật; trang
@@ -48,13 +49,91 @@ theo tên tệp tài liệu gốc.
   `extensions/sprite-sheet/` (manifest + `ui/index.html` + `SKILLS.md`),
   bổ sung nút "Ghi vào dự án (PNG + atlas.json)" xuất thẳng sprite vào
   `assets/sprites/` của dự án đang mở.
-- ChatAI chuyên Lua S30+ MRE VXP: thêm công cụ đọc-lõi `engine`
-  (read/list/glob/grep trong templates·sdk·engine·compat·doc/ai·extensions),
+- ChatAI chuyên Lua S30+ MRE VXP: thêm công cụ đọc-lõi (read/list/glob/grep
+  trong templates·sdk·engine·compat·doc/ai·extensions),
   ngữ cảnh nhúng `<installed_extensions>` + `<engine_core>` (ranh giới
   Lua→C thật: `engine.lua` wrapper mỏng quanh bảng `engine` đăng ký trong
-  `engine/src/runtime_lua.c`), SKILLS.md của extension được nạp làm luật
-  agent, system prompt yêu cầu kiểm chứng API bằng tool `engine` thay vì
+  `engine/src/runtime_bridge.c`), SKILLS.md của extension được nạp làm luật
+  agent, system prompt yêu cầu kiểm chứng API bằng đường đọc lõi thay vì
   giả định hàm mobile-Lua/love2d.
+- Tầng AI Agent dọn trùng lặp + nâng theo hướng Cline, chuyên Lua MRE S30+:
+  tool `engine` riêng bị gộp vào read/grep/glob bằng `args.scope="engine"`
+  (lời gọi kiểu cũ vẫn được parser tự dịch); SKILLS.md của extension không còn
+  nạp toàn văn vào mọi system prompt; một lượt trả lời được phép phát NHIỀU
+  khối `luas30-tool` và tất cả chạy lần lượt (trước chỉ chạy tool đầu tiên);
+  bản đồ lõi sửa chỗ đăng ký hàm engine về đúng `engine/src/runtime_bridge.c`
+  (mảng `luaL_Reg funcs[]` của `luas30_bridge_open`).
+- Hệ thống SKILLS mới (`skill_service.py`): skill là tệp `SKILL.md` có
+  frontmatter `name`/`description` quét từ `skills/` của project,
+  `doc/ai/skills/` của IDE và `skills/` của extension; prompt chỉ mang MỤC LỤC
+  `<agent_skills>`, toàn văn nạp theo yêu cầu qua tool `skill`
+  (op list|read) — kèm 4 skill trụ cột `engine-api-check`, `vxp-build-run`,
+  `s30plus-ui-design`, `problems-autofix` và lệnh `/skills` trong ô chat. Validator mới
+  `tools/validate_ai_skills.py`.
+- Tool `problems` + mặc định "Edit automatically" (Cline Act):
+  `{"tool":"problems","args":{"op":"list"|"count"}}` đọc trực tiếp bảng
+  PROBLEMS của IDE (severity, đường dẫn tương đối, dòng:cột, message + snippet
+  code) qua provider nối từ `MainWindow._ai_problems_snapshot` sang
+  `AIChatView.set_problems_provider`; access mode mặc định nay là
+  `edit_auto` — code agent sinh ra tự áp thẳng vào dự án (backup
+  `.luas30/ai-backups`), vòng lặp tự tiếp tục sau khi áp, skill
+  `problems-autofix` mô tả quy trình full vòng đời sửa lỗi.
+- Mỗi đợt áp code của AI in một card tổng hợp kiểu Cline/Cursor ngay trong
+  transcript Chat: "Đã sửa N tệp" + tổng `+X −Y` xanh/đỏ, nút **Review** mở lại
+  tab AI Changes (kể cả sau khi đã áp — giữ `_ai_last_applied` + `mark_applied`),
+  danh sách từng tệp kèm số dòng thêm/bớt, gọn 3 dòng đầu với link
+  "Hiển thị thêm N tệp"/"Thu gọn danh sách" (`x-luas30://` anchor trên
+  `QTextBrowser`, không lọt vào payload gửi provider). Validator mới
+  `tools/validate_ai_change_card.py`.
+
+- Sửa lỗi hiển thị bàn phím vỏ Nokia 225 (`vxp_emu_window.py`): nhãn phím mềm
+  không còn bị cắt ("Phím mềm" đầy đủ + tooltip trái/phải, font 8pt, quy tắc
+  QSS mới `QPushButton#PhoneKey` bỏ padding rộng thừa), phím điều hướng
+  trái/phải có icon chevron (`arrow_left`/`arrow_right` E76B/E76C trong
+  `icons.py`) thay vì ô đen rỗng, cột phím rộng 80px (bàn phím 252×186), và
+  màn chờ hết cảnh chữ "NOKIA" đè lên "225 DUAL SIM".
+- Sửa Chat AI "đứng" khi model không theo protocol: `parse_agent_response`
+  nay dịch được tool-call XML gốc kiểu Gemini/Ling (`<tool_call=read>` hoặc
+  thẻ trần + cặp `arg_key/arg_value`) — alias tên tool, suy đoán tool từ args
+  khi thiếu tên, `engine` cũ → `scope=engine`, và `write_file`/`edit_file`
+  thành `CodeEditAction` nên mã vẫn tự áp thẳng vào dự án như Cline; khối XML
+  bị gỡ khỏi chữ hiển thị, value mã nguồn giữ nguyên newline, fenced JSON
+  được ưu tiên khi trùng lặp. Validator mới
+  `tools/validate_ai_tool_call_xml.py` (12 check).
+- E2E tự động cho vòng lặp Chat AI (`tools/e2e_chat_ai_agent.py`, headless,
+  không cần API key): 8 lượt model kịch bản xen lẫn fenced JSON + XML được
+  phát qua đúng `AIChatView` thật trên dự án tạm — agent phải dựng màn hình
+  đủ nút nhấn/label/photo/textbox/card trong `.luas30/ui_design.json`, sinh
+  PNG thật, TỰ ÁP 2 đợt sửa `main.lua` (hiện 2 card "Đã sửa N tệp"), đọc
+  PROBLEMS và dừng đúng lượt; 14 check, kèm chẩn đoán từng lượt nếu agent
+  không tương tác được với dự án.
+- `tools/drive_ide_as_user.py` — mô phỏng NGƯỜI DÙNG THẬT trong `VxpMainWindow`
+  (appdata/projects tạm, chặn modal SetupDialog): tạo dự án mẫu `DemoApp` qua
+  đúng `session.create_project` + `_switch_project`, gõ yêu cầu vào composer
+  rồi `send()` thật; chỉ stub lớp mạng bằng kịch bản 8 lượt fenced+XML, còn
+  toàn bộ pipeline thật chạy (auto-apply, backup, reload editor, tab AI
+  Changes, PROBLEMS) — 14 check + ảnh `build/shots_user_ide/ide_as_user.png`.
+- Sửa lỗi THẬT tìm ra nhờ mô phỏng: `AIDiffView` crash
+  (`QPlainTextEdit.ExtraSelection` không tồn tại trong PySide6) khi highlight
+  dòng thay đổi — chuyển sang `QTextEdit.ExtraSelection`; driver có check hồi
+  quy riêng cho lỗi này.
+- Sửa Chat AI không tự áp mã (xem [1.0.1] ở trên): đóng gói lại thành công
+  `dist/LuaS30IDE-Setup-1.0.1.exe` (duy nhất 1 file, 483 MB, Inno Setup wizard
+  + `/SILENT`, SHA-256 kèm theo) — cài đặt im lặng kiểm chứng OK, bản cài mở
+  `LuaS30IDE.exe` thật (cửa sổ "LuaS30 IDE", dialog thiết lập lần đầu chạy
+  đúng). `build_frozen.py` nay copy `VERSION` vào thư mục frozen: thiếu nó,
+  bản đóng băng báo "unknown" và làm nhiễm `setup_state.json`, khiến bản cài
+  thật bị hỏi lại thiết lập lần đầu.
+- UI Designer nâng cấp chỉnh sửa theo chuẩn Canva: hoàn tác/đi lại theo từng
+  bước (`Ctrl+Z`/`Ctrl+Shift+Z`, tối đa 60 trạng thái, chọn lại đúng các thành
+  phần cũ), chọn nhiều bằng khung cao-su/`Shift`+click/`Ctrl+A`, resize 8 tay
+  nắm (4 góc + 4 cạnh, kẹp trong màn hình, tối thiểu 4px), tinh chỉnh bằng mũi
+  tên (1px, `Shift`=10px), sao chép/dán `Ctrl+C`/`Ctrl+V` tự cấp ID duy nhất,
+  căn trái/giữa/phải · trên/giữa/dưới + phân bố đều qua menu chuột phải,
+  khoá lớp (bỏ kéo/resize/nudge/Xoá, viền chấm, lưu khoá `lock` trong
+  `ui_design.json`), sửa chữ tại chỗ bằng kích đúp, pan bằng `Space`+kéo hoặc
+  chuột giữa, zoom tới 4× với `Ctrl+0/+/−`, và nhãn `x, y  w×h` trực tiếp khi
+  kéo/resize.
 - Sửa resolve màu icon, pipeline build UTF-8 và khôi phục đường dẫn
   toolchain (commits 71e0c25, 0cf75b9).
 

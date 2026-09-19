@@ -16,11 +16,12 @@ chứ không phải đường dẫn tệp, và không còn tệp logic riêng đ
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
 from app.ui import palette
-from PySide6.QtCore import QSize, Qt, Signal, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QToolBar,
@@ -83,6 +84,16 @@ class UIDesignerWidget(QWidget):
             self.export_lua)
         tb_save.setToolTip(f"Ghi {DESIGN_FILENAME} và sinh {EXPORT_FILENAME}")
         toolbar.addSeparator()
+        # undo/redo theo BƯỚC (chụp ảnh toàn bộ canvas mỗi nhịp ngừng tay)
+        self.tb_undo = toolbar.addAction(
+            icons.icon("undo", "palette.TEXT_2", icons.ICON_TOOLBAR), "Hoàn tác",
+            self.undo)
+        self.tb_undo.setToolTip("Hoàn tác bước chỉnh sửa cuối (Ctrl+Z)")
+        self.tb_redo = toolbar.addAction(
+            icons.icon("redo", "palette.TEXT_2", icons.ICON_TOOLBAR), "Làm lại",
+            self.redo)
+        self.tb_redo.setToolTip("Làm lại thao tác vừa hoàn tác (Ctrl+Y / Ctrl+Shift+Z)")
+        toolbar.addSeparator()
         tb_img = toolbar.addAction(
             icons.icon_image("palette.TEXT_2", icons.ICON_TOOLBAR), "Nhập ảnh",
             self.import_images)
@@ -111,7 +122,7 @@ class UIDesignerWidget(QWidget):
         tb_zoom_out.setToolTip("Thu nhỏ (Ctrl+−)")
         tb_fit = toolbar.addAction(
             icons.icon_frame("palette.TEXT_2", icons.ICON_TOOLBAR), "", self._zoom_fit)
-        tb_fit.setToolTip("Canh vừa khung")
+        tb_fit.setToolTip("Canh vừa khung (Ctrl+0)")
         tb_zoom_in = toolbar.addAction(
             icons.icon_zoom_in("palette.TEXT_2", icons.ICON_TOOLBAR), "", self._zoom_in)
         tb_zoom_in.setToolTip("Phóng to (Ctrl++)")
@@ -164,17 +175,28 @@ class UIDesignerWidget(QWidget):
 
         self._last_ids = self._screen_ids()
         self.scene.layersChanged.connect(self._on_layers_changed)
-        self.scene.contentChanged.connect(self._mark_dirty)
+        # mọi thay đổi canvas: vừa đánh dấu "bẩn" vừa hẹn giờ gom thành MỘT
+        # bước hoàn tác (kéo chuột liên tục = hàng trăm contentChanged)
+        self.scene.contentChanged.connect(self._on_content_changed)
+        self._snap_timer = QTimer(self)
+        self._snap_timer.setSingleShot(True)
+        self._snap_timer.setInterval(400)
+        self._snap_timer.timeout.connect(self._commit_snapshot)
+        self._snapshots: list[dict] = []
+        self._snap_pos = -1
 
         outer.addWidget(body, 1)
 
         self._install_shortcuts()
+        self._reset_undo()
 
     def _install_shortcuts(self):
-        """Ctrl+D nhân bản lớp, Ctrl+Shift+↑/↓ đưa lớp ra trước / ra sau, Ctrl+Shift+R xoay.
+        """Ctrl+Z/Y hoàn tác, Ctrl+D nhân bản lớp, Ctrl+Shift+↑/↓ đưa lớp ra
+        trước / ra sau, Ctrl+Shift+R xoay.
 
         Đặt context WidgetShortcut nên chỉ ăn khi con trỏ đang ở UI Designer —
-        không tranh chấp với Ctrl+R (Build + Package + Run) của cả IDE.
+        không tranh chấp với Ctrl+R (Build + Package + Run) của cả IDE. Mũi tên,
+        Ctrl+C/V/A và Ctrl+±/0 thuộc về DesignerView (cần focus canvas).
         """
         from PySide6.QtGui import QKeySequence, QShortcut
 
@@ -185,6 +207,9 @@ class UIDesignerWidget(QWidget):
             return sc
 
         self._shortcuts = [
+            bind("Ctrl+Z", self.undo),
+            bind("Ctrl+Shift+Z", self.redo),
+            bind("Ctrl+Y", self.redo),
             bind("Ctrl+D", self.layers.duplicate_layer),
             bind("Ctrl+Shift+Up", self.layers.raise_layer),
             bind("Ctrl+Shift+Down", self.layers.lower_layer),
@@ -220,6 +245,85 @@ class UIDesignerWidget(QWidget):
             return
         self._dirty = False
         self.dirtyChanged.emit(False)
+
+    # ---------------------------------------------------------------- undo / redo
+    # Mô hình "chụp ảnh": mỗi nhịp ngừng tay 400ms, toàn bộ canvas được serialize
+    # thành một ảnh snapshot; hoàn tác = nạp lại ảnh trước đó bằng đúng đường
+    # `items_to_scene` mà thao tác mở màn hình vẫn dùng. Đơn giản hơn QUndoStack
+    # rất nhiều mà không phải viết lại từng command kéo/resize/nhập chữ.
+    UNDO_LIMIT = 60
+
+    def _snapshot(self) -> dict:
+        return {
+            "items": scene_to_items(self.scene),
+            "sel": [it.name for it in self.scene.selected_widgets()],
+        }
+
+    @staticmethod
+    def _same_snapshot(a: dict | None, b: dict) -> bool:
+        if a is None:
+            return False
+        return json.dumps(a["items"], sort_keys=True) == \
+            json.dumps(b["items"], sort_keys=True)
+
+    def _reset_undo(self):
+        """Mở màn hình / canvas mới -> stack cũ hết nghĩa, dựng lại từ đầu."""
+        self._snap_timer.stop()
+        self._snapshots = [self._snapshot()]
+        self._snap_pos = 0
+        self._update_undo_actions()
+
+    def _on_content_changed(self):
+        self._mark_dirty()
+        self._snap_timer.start()   # gom chuỗi thay đổi nhanh thành MỘT bước
+
+    def _commit_snapshot(self):
+        snap = self._snapshot()
+        current = self._snapshots[self._snap_pos] if self._snapshots else None
+        if self._same_snapshot(current, snap):
+            return
+        del self._snapshots[self._snap_pos + 1:]
+        self._snapshots.append(snap)
+        if len(self._snapshots) > self.UNDO_LIMIT:
+            del self._snapshots[0]
+        self._snap_pos = len(self._snapshots) - 1
+        self._update_undo_actions()
+
+    def _update_undo_actions(self):
+        if hasattr(self, "tb_undo"):
+            self.tb_undo.setEnabled(self._snap_pos > 0)
+            self.tb_redo.setEnabled(self._snap_pos < len(self._snapshots) - 1)
+
+    def undo(self):
+        self._commit_snapshot()   # phần chưa kịp gom vào bước trước
+        if self._snap_pos <= 0:
+            return
+        self._snap_pos -= 1
+        self._apply_snapshot(self._snapshots[self._snap_pos])
+
+    def redo(self):
+        self._commit_snapshot()
+        if self._snap_pos >= len(self._snapshots) - 1:
+            return
+        self._snap_pos += 1
+        self._apply_snapshot(self._snapshots[self._snap_pos])
+
+    def _apply_snapshot(self, snap: dict):
+        self.view._close_text_editor()
+        items_to_scene(snap["items"], self.scene)
+        by_name = {it.name: it for it in self.scene.widget_items()}
+        self.scene.clearSelection()
+        restored = []
+        for name in snap.get("sel", ()):
+            it = by_name.get(name)
+            if it is not None:
+                it.setSelected(True)
+                restored.append(it)
+        self._last_ids = self._screen_ids()
+        self.layers.refresh()
+        self.properties.set_item(restored[0] if restored else None)
+        self._mark_dirty()
+        self._update_undo_actions()
 
     # ---------------------------------------------------------------- ghi thiết kế
     def _screen_ids(self) -> list[str]:
@@ -378,6 +482,7 @@ class UIDesignerWidget(QWidget):
         self._last_ids = self._screen_ids()
         self._refresh_breadcrumb()
         self._mark_clean()
+        self._reset_undo()
 
     def _open_screen(self, screen_id: str, flush: bool = True):
         if flush:
@@ -512,6 +617,7 @@ class UIDesignerWidget(QWidget):
         self._mark_clean()
         self._refresh_breadcrumb()
         self.refresh_screens()
+        self._reset_undo()
         self.logMessage.emit(f"[UI DESIGNER] Đã xoá màn hình '{screen_id}'")
         self.screensChanged.emit()
 
@@ -544,6 +650,7 @@ class UIDesignerWidget(QWidget):
         self._mark_clean()
         self._refresh_breadcrumb()
         self.refresh_screens()
+        self._reset_undo()
 
     def open_screen(self, screen_id: Optional[str] = None):
         """Mở màn hình theo id; không truyền thì hỏi chọn trong danh sách."""
@@ -580,6 +687,7 @@ class UIDesignerWidget(QWidget):
         self.scene.clear_widgets()
         self._last_ids = []
         self._mark_clean()
+        self._reset_undo()
 
         if self.store.root is None:
             self._refresh_breadcrumb()

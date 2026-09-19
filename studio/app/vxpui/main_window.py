@@ -112,6 +112,8 @@ class VxpMainWindow(QWidget):
         self.runner = LuaRunner(self.build_service, self.emulator_service, self)
         self.ai_change_service = AIChangeService()
         self._ai_change_set: PreparedChangeSet | None = None
+        self._ai_last_applied: PreparedChangeSet | None = None
+        self._ai_last_applied_backup: Path | None = None
         self.index = ProjectIndex()
 
         self._startup_mode = "welcome"
@@ -459,9 +461,40 @@ class VxpMainWindow(QWidget):
                self._toggle_console_panel)
         button("ai", "fa5s.robot", "Chat AI (Ctrl+Alt+I)",
                lambda: self._set_ai_visible(not self._ai_visible))
+        # Icon extension đã cài — như VS Code, mỗi tiện ích một nút ở cột trái.
+        self._activity_ext_box = QVBoxLayout()
+        self._activity_ext_box.setSpacing(4)
+        layout.addLayout(self._activity_ext_box)
         layout.addStretch(1)
         button("settings", "fa5s.cog", "Cài đặt Studio", self._open_settings)
+        self._refresh_activity_extensions()
         return rail
+
+    def _refresh_activity_extensions(self) -> None:
+        """Nạp lại icon extension trên activity bar theo danh sách đã cài."""
+        box = getattr(self, "_activity_ext_box", None)
+        if box is None:
+            return
+        while box.count():
+            item = box.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._activity_ext_buttons: dict[str, QToolButton] = {}
+        for manifest in self.extension_service.discover():
+            if not self.extension_service.is_installed(manifest.id):
+                continue
+            item = QToolButton()
+            item.setObjectName("ActivityButton")
+            item.setIcon(icon(manifest.icon))
+            item.setIconSize(QSize(17, 17))
+            item.setFixedSize(34, 34)
+            item.setToolTip(f"{manifest.name} — tiện ích mở rộng")
+            item.clicked.connect(
+                lambda _checked=False, ext_id=manifest.id: self._open_extension(ext_id)
+            )
+            box.addWidget(item, 0, Qt.AlignmentFlag.AlignHCenter)
+            self._activity_ext_buttons[manifest.id] = item
 
     def _activity_explorer(self) -> None:
         self._activity_show_pane(0)
@@ -724,6 +757,7 @@ class VxpMainWindow(QWidget):
         self.ai_chat.set_active_editor_provider(self._active_editor_context)
         self.ai_chat.set_shell_runner(self._run_ai_shell)
         self.ai_chat.set_shell_stopper(self._stop_ai_shell)
+        self.ai_chat.set_problems_provider(self._ai_problems_snapshot)
         self.ai_chat.changes_proposed.connect(self._prepare_ai_changes)
         self.ai_chat.review_changes_requested.connect(self._review_ai_changes)
         self.ai_chat.apply_changes_requested.connect(self._apply_ai_changes)
@@ -1272,7 +1306,9 @@ class VxpMainWindow(QWidget):
 
         def factory():
             return ExtensionMarketView(
-                self.extension_service, on_open=self._open_extension
+                self.extension_service,
+                on_open=self._open_extension,
+                on_change=self._refresh_activity_extensions,
             )
 
         self._enter_editor()
@@ -2059,6 +2095,11 @@ class VxpMainWindow(QWidget):
 
     def _review_ai_changes(self) -> None:
         if not self._ai_change_set:
+            if self._ai_last_applied is not None:
+                view = self._show_ai_diff(self._ai_last_applied, activate=True)
+                if view is not None:
+                    view.mark_applied(self._ai_last_applied_backup)
+                return
             self.show_status("No pending AI code changes")
             return
         self._show_ai_diff(self._ai_change_set, activate=True)
@@ -2090,10 +2131,16 @@ class VxpMainWindow(QWidget):
             return
         self._reload_applied_editors(change_set)
         paths = [path.relative_to(change_set.project_root).as_posix() for path in applied]
+        files = [
+            {"path": c.relative_path, "added": c.added_lines, "removed": c.removed_lines}
+            for c in change_set.changes
+        ]
         view = self.tabs.tool_widget("ai-diff")
         if isinstance(view, AIDiffView):
             view.mark_applied(backup)
-        self.ai_chat.on_code_changes_applied(paths, str(backup or ""))
+        self._ai_last_applied = change_set
+        self._ai_last_applied_backup = backup
+        self.ai_chat.on_code_changes_applied(paths, str(backup or ""), files=files)
         self.bottom.console.append(
             f"[AI] Applied {len(paths)} code file(s)" + (f"; backup: {backup}" if backup else "")
         )
@@ -2117,6 +2164,36 @@ class VxpMainWindow(QWidget):
         self.show_status("Problem sent to Chat AI — press Enter to ask")
         self._set_ai_visible(True)
         self.ai_chat.prefill_question(question)
+
+    def _ai_problems_snapshot(self, *, op: str = "list") -> str:
+        """Nền đọc của tool problems: xuất bảng PROBLEMS hiện tại cho AI agent."""
+        from app.widgets.bottom_panel import ProblemsView
+
+        view = self.bottom.problems
+        rows = view._rows()
+        if op == "count":
+            return f"PROBLEMS: {len(rows)} mục."
+        if not rows:
+            return ""
+        root = self.session.root
+        lines = [
+            f"PROBLEMS ({len(rows)} mục, hiển thị tối đa {view.MAX_ITEMS}; "
+            "đường dẫn tương đối dự án):"
+        ]
+        limit = min(len(rows), view.MAX_ITEMS)
+        for severity, path, line, column, message in rows[:limit]:
+            try:
+                shown = Path(path).relative_to(root).as_posix() if root else Path(path).name
+            except ValueError:
+                shown = Path(path).as_posix()
+            col = f":{column}" if column else ""
+            lines.append(f"- [{severity.upper()}] {shown}:{line}{col} — {message}")
+            snippet = ProblemsView._snippet(path, line)
+            if snippet:
+                lines.append("  " + snippet.replace("\n", "\n  "))
+        if len(rows) > limit:
+            lines.append(f"... còn {len(rows) - limit} mục nữa trong bảng PROBLEMS.")
+        return "\n".join(lines)
 
     # ========================================================== layout panes
     def _toggle_left_column(self) -> None:

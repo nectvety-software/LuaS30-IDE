@@ -41,28 +41,29 @@ class ScreenHost(QWidget):
             return
         painter.setPen(QColor("#4676b2"))
         painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        painter.drawText(self.rect().adjusted(8, 80, -8, -155), Qt.AlignmentFlag.AlignCenter, "NOKIA")
+        painter.drawText(self.rect().adjusted(8, 40, -8, -240), Qt.AlignmentFlag.AlignCenter, "NOKIA")
         painter.setPen(QColor("#76869e"))
         painter.setFont(QFont("Segoe UI", 8))
-        painter.drawText(QRectF(self.rect()).adjusted(10, 110, -10, -105),
+        painter.drawText(QRectF(self.rect()).adjusted(10, 120, -10, -105),
                          Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap,
                          "225 DUAL SIM\n\n" + self.message)
 
 
 class PhoneKeypad(QWidget):
     key_pressed = Signal(int)
+    # (mã phím MRE, icon, nhãn trên phím, tooltip mô tả đầy đủ).
     KEYS = (
-        (native_window.MRE_KEY_LEFT_SOFT, "back", "Phím mềm trái"),
-        (native_window.MRE_KEY_UP, "arrow_up", ""),
-        (native_window.MRE_KEY_RIGHT_SOFT, "forward", "Phím mềm phải"),
-        (native_window.MRE_KEY_LEFT, "", ""),
-        (native_window.MRE_KEY_OK, "", "OK"),
-        (native_window.MRE_KEY_RIGHT, "", ""),
-        (-1, "", ""),
-        (native_window.MRE_KEY_DOWN, "arrow_down", ""),
-        (-1, "", ""),
-        *((0x30 + n, "", str(n)) for n in range(1, 10)),
-        (0x2A, "", "*"), (0x30, "", "0"), (0x23, "", "#"),
+        (native_window.MRE_KEY_LEFT_SOFT, "back", "Phím mềm", "Phím mềm trái"),
+        (native_window.MRE_KEY_UP, "arrow_up", "", "Điều hướng lên"),
+        (native_window.MRE_KEY_RIGHT_SOFT, "forward", "Phím mềm", "Phím mềm phải"),
+        (native_window.MRE_KEY_LEFT, "arrow_left", "", "Điều hướng trái"),
+        (native_window.MRE_KEY_OK, "", "OK", "Chọn (OK)"),
+        (native_window.MRE_KEY_RIGHT, "arrow_right", "", "Điều hướng phải"),
+        (-1, "", "", ""),
+        (native_window.MRE_KEY_DOWN, "arrow_down", "", "Điều hướng xuống"),
+        (-1, "", "", ""),
+        *((0x30 + n, "", str(n), "") for n in range(1, 10)),
+        (0x2A, "", "*", ""), (0x30, "", "0", ""), (0x23, "", "#", ""),
     )
 
     def __init__(self, parent=None) -> None:
@@ -71,22 +72,26 @@ class PhoneKeypad(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
         self.buttons: list[QPushButton] = []
-        for index, (code, icon_name, label) in enumerate(self.KEYS):
+        for index, (code, icon_name, label, tip) in enumerate(self.KEYS):
             row, column = divmod(index, 3)
             if code < 0:
                 layout.addWidget(QWidget(), row, column)
                 continue
             button = QPushButton(label)
-            button.setFixedSize(76, 24)
+            button.setObjectName("PhoneKey")
+            button.setFixedSize(80, 24)
             if icon_name:
                 button.setIcon(font_icon(icon_name, 12, "#DCE7F7"))
                 button.setIconSize(QSize(13, 13))
             if label and icon_name:
-                button.setToolTip(label)
+                # Phím mềm vừa có icon vừa có chữ: font nhỏ để không bị cắt nhãn.
+                button.setFont(QFont("Segoe UI", 8))
+            if tip:
+                button.setToolTip(tip)
             button.clicked.connect(lambda _checked=False, value=code: self.key_pressed.emit(value))
             layout.addWidget(button, row, column)
             self.buttons.append(button)
-        self.setFixedSize(234, 186)
+        self.setFixedSize(252, 186)
 
 
 class PhoneBody(QWidget):

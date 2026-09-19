@@ -71,6 +71,8 @@ GLYPHS: dict[str, str] = {
     "duplicate": "",
     "arrow_up": "",
     "arrow_down": "",
+    "arrow_left": "",
+    "arrow_right": "",
     "sync": "",
     "grid": "",
     "pointer": "",

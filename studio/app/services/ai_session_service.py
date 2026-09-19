@@ -19,7 +19,7 @@ class ChatSession:
     updated_at: str
     provider: str = ""
     model: str = ""
-    access_mode: str = "ask"
+    access_mode: str = "edit_auto"
     messages: list[dict] = field(default_factory=list)
 
 
@@ -122,7 +122,7 @@ class AIChatSessionStore:
         *,
         provider: str = "",
         model: str = "",
-        access_mode: str = "ask",
+        access_mode: str = "edit_auto",
         title: str = "New session",
     ) -> ChatSession:
         payload = self._load()
@@ -136,7 +136,7 @@ class AIChatSessionStore:
             updated_at=now,
             provider=str(provider or ""),
             model=str(model or ""),
-            access_mode=str(access_mode or "ask"),
+            access_mode=str(access_mode or "edit_auto"),
             messages=[],
         )
         payload["sessions"][session.id] = asdict(session)
@@ -157,7 +157,7 @@ class AIChatSessionStore:
                 updated_at=str(item.get("updated_at") or self._now()),
                 provider=str(item.get("provider") or ""),
                 model=str(item.get("model") or ""),
-                access_mode=str(item.get("access_mode") or "ask"),
+                access_mode=str(item.get("access_mode") or "edit_auto"),
                 messages=self._clean_messages(item.get("messages") or []),
             )
         except (TypeError, ValueError):

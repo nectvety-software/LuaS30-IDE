@@ -303,7 +303,17 @@ C_AMBER = QColor("#d7ba7d")
 C_TRACK = QColor(BORDER)
 C_DASH = QColor(BORDER_HOVER)   # viền gạch của khung rỗng (row/column/spacer)
 
-HANDLE = 5.0  # kích thước tay nắm resize (đơn vị scene)
+HANDLE = 5.0  # kích thước ô vẽ tay nắm resize (đơn vị scene)
+
+# 8 tay nắm resize kiểu Canva: 4 góc + 4 trung điểm cạnh. Kéo tay nắm nào thì
+# mép tương ứng đổi, mép đối diện giữ nguyên.
+HANDLE_KEYS = ("nw", "n", "ne", "e", "se", "s", "sw", "w")
+HANDLE_CURSORS = {
+    "nw": Qt.SizeFDiagCursor, "se": Qt.SizeFDiagCursor,
+    "ne": Qt.SizeBDiagCursor, "sw": Qt.SizeBDiagCursor,
+    "n": Qt.SizeVerCursor, "s": Qt.SizeVerCursor,
+    "e": Qt.SizeHorCursor, "w": Qt.SizeHorCursor,
+}
 
 # Thứ tự lớp (z-order): item thứ i trong danh sách layer có z = BASE + i * STEP.
 # Bezel = -20, khung màn hình = -10 nên mọi thành phần luôn nằm trên nền.
@@ -312,7 +322,7 @@ LAYER_Z_STEP = 10
 
 
 class DesignerItem(QGraphicsRectItem):
-    """Thành phần UI trên canvas — kéo di chuyển, chọn, resize góc dưới-phải.
+    """Thành phần UI trên canvas — kéo di chuyển, chọn, resize bằng 8 tay nắm.
 
     Ngoài hình học còn giữ:
       name    — ID của thành phần (định danh Lua, đồng bộ sang mã ở khoá `name`
@@ -349,6 +359,12 @@ class DesignerItem(QGraphicsRectItem):
         # chỉ hít dính khi NGƯỜI DÙNG đang kéo — setPos() từ code (mở tệp, nhân
         # bản, undo…) phải đặt đúng toạ độ đã ghi, không bị dóng lại
         self._dragging = False
+        # khoá lớp (menu chuột phải): không kéo / không resize, vẫn chọn và sửa
+        # thuộc tính được — trạng thái này được ghi vào tệp thiết kế ("lock")
+        self.locked = False
+        # tay nắm đang bị kéo / đang rê chuột phải (để ô vẽ tô sáng khi hover)
+        self._resize_handle: str | None = None
+        self._hover_handle: str | None = None
 
         self.setPos(x, y)
         self.setFlags(
@@ -487,6 +503,25 @@ class DesignerItem(QGraphicsRectItem):
         """Xoay thêm `delta` độ (mặc định 90° — bốn hướng cho ảnh/sprite)."""
         self.set_angle(self.rotation() + delta)
 
+    # ------------------------------------------------ khoá thành phần
+    def set_locked(self, locked: bool):
+        """Khoá/mở khoá — vật bị khoá không kéo hay resize được nhưng vẫn
+        chọn được để xem/sửa thuộc tính (kiểu khoá lớp của Canva/Figma)."""
+        locked = bool(locked)
+        if locked == self.locked:
+            return
+        self.locked = locked
+        flags = self.flags()
+        if locked:
+            flags &= ~QGraphicsItem.ItemIsMovable
+            self._resizing = False
+            self._dragging = False
+        else:
+            flags |= QGraphicsItem.ItemIsMovable
+        self.setFlags(flags)
+        self.update()
+        self._notify_changed()
+
     # ------------------------------------------------ chặn kéo ra ngoài màn hình
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionChange and self.scene() is not None:
@@ -510,43 +545,121 @@ class DesignerItem(QGraphicsRectItem):
         return super().itemChange(change, value)
 
     def _end_drag(self):
-        """Kết thúc kéo: tắt cờ hít dính và xoá đường dóng còn sót."""
-        if not self._dragging:
-            return
-        self._dragging = False
+        """Kết thúc kéo/resize: tắt cờ tương tác, xoá đường dóng + nhãn kích thước sót."""
+        self._resize_handle = None
         scene = self.scene()
+        ender = getattr(scene, "end_interaction", None)
+        if ender is not None:
+            ender()
+        self._dragging = False
         clear = getattr(scene, "clear_guides", None)
         if clear is not None:
             clear()
 
-    # ------------------------------------------------ resize bằng tay nắm
-    def _handle_rect(self) -> QRectF:
+    # ------------------------------------------------ resize bằng 8 tay nắm
+    def _handles(self) -> dict[str, QRectF]:
+        """8 vùng chạm quanh biên thành phần: 4 góc + 4 trung điểm cạnh.
+
+        Vùng chạm rộng hơn ô vẽ (HANDLE * 2.4) để đầu chuột bắt được dễ dàng —
+        đây cũng là lý do Canva resize "như có phép màu" dù tay nắm bé.
+        """
         r = self.rect()
-        return QRectF(r.right() - HANDLE, r.bottom() - HANDLE, HANDLE * 2, HANDLE * 2)
+        mx, my = r.center().x(), r.center().y()
+        points = {
+            "nw": (r.left(), r.top()), "n": (mx, r.top()),
+            "ne": (r.right(), r.top()), "e": (r.right(), my),
+            "se": (r.right(), r.bottom()), "s": (mx, r.bottom()),
+            "sw": (r.left(), r.bottom()), "w": (r.left(), my),
+        }
+        reach = HANDLE * 2.4
+        return {key: QRectF(px - reach / 2, py - reach / 2, reach, reach)
+                for key, (px, py) in points.items()}
+
+    def handle_at(self, pos: QPointF) -> str | None:
+        """Tên tay nắm chứa điểm `pos` (hệ item); None khi không trúng hoặc khoá."""
+        if self.locked:
+            return None
+        for key, rect in self._handles().items():
+            if rect.contains(pos):
+                return key
+        return None
+
+    def _apply_resize(self, handle: str, delta: QPointF):
+        """Kéo một tay nắm: chỉ mép tương ứng đổi, mép đối diện giữ nguyên.
+
+        `self._resize_start` là hộp trong HỆ SCENE (pos + cỡ) vì các mép bị kẹp
+        theo màn hình 240×320 — toạ độ item (luôn bắt đầu từ 0) vô nghĩa ở đây.
+        Mọi mép đều nằm trong màn hình với cạnh tối thiểu 4px, nên không thể
+        kéo thành phần "lộn ngược" hay đẩy nó ra ngoài khung.
+        """
+        s = self._resize_start
+        left, top = s.left(), s.top()
+        right, bottom = s.right(), s.bottom()
+        dx, dy = delta.x(), delta.y()
+        if "w" in handle:
+            left = min(max(0.0, left + dx), right - 4.0)
+        if "e" in handle:
+            right = max(min(float(SCREEN_W), right + dx), left + 4.0)
+        if "n" in handle:
+            top = min(max(0.0, top + dy), bottom - 4.0)
+        if "s" in handle:
+            bottom = max(min(float(SCREEN_H), bottom + dy), top + 4.0)
+        changed = (left != s.left() or top != s.top()
+                   or right != s.right() or bottom != s.bottom())
+        self.setPos(left, top)
+        self.setRect(0, 0, right - left, bottom - top)
+        self.update()
+        if changed:
+            self._notify_changed()
 
     def hoverMoveEvent(self, event):
-        on_handle = self._handle_rect().contains(event.pos())
-        self.setCursor(Qt.SizeFDiagCursor if on_handle else Qt.SizeAllCursor)
+        key = self.handle_at(event.pos())
+        if key != self._hover_handle:
+            self._hover_handle = key
+            self.update()
+        if key is not None:
+            self.setCursor(HANDLE_CURSORS[key])
+        elif self.locked:
+            self.setCursor(Qt.ForbiddenCursor)
+        else:
+            self.setCursor(Qt.SizeAllCursor)
         super().hoverMoveEvent(event)
 
+    def hoverLeaveEvent(self, event):
+        if self._hover_handle is not None:
+            self._hover_handle = None
+            self.update()
+        super().hoverLeaveEvent(event)
+
+    def _begin_interaction(self, kind: str):
+        """Báo scene đang kéo/resize thành phần này — view vẽ nhãn 'x, y  w×h'."""
+        scene = self.scene()
+        starter = getattr(scene, "begin_interaction", None)
+        if starter is not None:
+            starter(self, kind)
+
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self._handle_rect().contains(event.pos()):
-            self._resizing = True
-            self._resize_origin = event.scenePos()
-            self._resize_start = QRectF(self.rect())
-            event.accept()
-            return
+        if event.button() == Qt.LeftButton:
+            key = self.handle_at(event.pos())
+            if key is not None:
+                self._resizing = True
+                self._resize_handle = key
+                self._resize_origin = event.scenePos()
+                # hộp hệ SCENE — các mép kẹp theo màn hình, không phải theo item
+                self._resize_start = QRectF(self.pos(), self.rect().size())
+                self._begin_interaction("resize")
+                event.accept()
+                return
         super().mousePressEvent(event)
         # bật hít dính cho thao tác KÉO sắp tới (resize ở trên đã return sớm)
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.LeftButton and not self.locked:
             self._dragging = True
+            self._begin_interaction("move")
 
     def mouseMoveEvent(self, event):
-        if self._resizing:
-            delta = event.scenePos() - self._resize_origin
-            # đi qua set_size() để kích thước luôn bị kẹp trong màn hình
-            self.set_size(self._resize_start.width() + delta.x(),
-                          self._resize_start.height() + delta.y())
+        if self._resizing and self._resize_handle:
+            self._apply_resize(self._resize_handle,
+                               event.scenePos() - self._resize_origin)
             event.accept()
             return
         super().mouseMoveEvent(event)
@@ -562,6 +675,21 @@ class DesignerItem(QGraphicsRectItem):
         self._end_drag()
         super().mouseUngrabEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        """Kích đúp thành phần có chữ -> sửa chữ NGAY trên canvas (kiểu Canva).
+
+        Scene phát `textEditRequested`; DesignerView mở một QLineEdit phủ đúng
+        ô thành phần. Thành phần khoá không mở trình sửa.
+        """
+        scene = self.scene()
+        starter = getattr(scene, "begin_text_edit", None)
+        if (starter is not None and not self.locked
+                and supports_text(self.widget_type)):
+            starter(self)
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
     # ------------------------------------------------ vẽ
     def paint(self, painter, option, widget):
         painter.setRenderHint(QPainter.Antialiasing, True)
@@ -570,14 +698,27 @@ class DesignerItem(QGraphicsRectItem):
         draw(painter, rect, self)
 
         if self.isSelected():
-            pen = QPen(QColor("#f59e0b"), 1.4, Qt.DashLine)
-            painter.setPen(pen)
+            edge = QColor("#f59e0b")
+            if self.locked:
+                # nét CHẤM phân biệt lớp bị khoá với lớp thường (không có tay nắm)
+                painter.setPen(QPen(edge, 1.4, Qt.DotLine))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(rect)
+                return
+            painter.setPen(QPen(edge, 1.4, Qt.DashLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(rect)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(QColor("#f59e0b")))
-            r = self._handle_rect()
-            painter.drawRect(QRectF(r.center().x() - 2.5, r.center().y() - 2.5, 5, 5))
+            # 8 tay nắm trắng viền cam; tay nắm đang rê chuột tô đầy màu cam
+            # để người dùng thấy rõ mép nào sẽ chạy khi bấm kéo
+            for _key, region in self._handles().items():
+                center = region.center()
+                side = 6.5 if _key == self._hover_handle else 5.0
+                box = QRectF(center.x() - side / 2, center.y() - side / 2,
+                             side, side)
+                painter.setPen(QPen(edge, 1))
+                painter.setBrush(QBrush(
+                    edge if _key == self._hover_handle else QColor("#ffffff")))
+                painter.drawRect(box)
 
     # ------------------------------------------------ serialize
     def to_dict(self) -> dict:
@@ -598,6 +739,8 @@ class DesignerItem(QGraphicsRectItem):
             d["fill"] = self.fill.name()
         if self.rotation():
             d["rot"] = round(self.rotation(), 1)
+        if self.locked:
+            d["lock"] = True
         return d
 
     @classmethod
@@ -613,6 +756,8 @@ class DesignerItem(QGraphicsRectItem):
                    image=image, src=src, fill=fill,
                    rotation=float(d.get("rot", 0.0) or 0.0))
         item.set_name(d.get("name", item.name))
+        if d.get("lock"):
+            item.set_locked(True)
         return item
 
 

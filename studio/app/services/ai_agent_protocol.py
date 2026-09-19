@@ -26,17 +26,140 @@ GENERIC_CODE_RE = re.compile(
     r"```([^\n`]*)\n(.*?)```",
     re.IGNORECASE | re.DOTALL,
 )
+# Một số model (Gemini/Ling-style) bỏ qua protocol fenced JSON và phát
+# tool-call gốc XML: <tool_call=read> / <tool_call name="read"> với các cặp
+# <arg_key>/<arg_value>. Bộ parse dưới dịch dạng đó sang ToolAction/
+# CodeEditAction để vòng lặp agent không chết giữa chừng.
+XML_TOOL_RE = re.compile(
+    r"<tool_call\b([^<>]*)>(.*?)</tool_call>",
+    re.IGNORECASE | re.DOTALL,
+)
+XML_ARG_RE = re.compile(
+    r"<arg_key>\s*(.*?)\s*</arg_key>\s*<arg_value>(.*?)</arg_value>",
+    re.IGNORECASE | re.DOTALL,
+)
+_XML_NAME_ATTR_RE = re.compile(r"\b(?:name|tool)\s*=\s*[\"']?([\w:.\-]+)", re.IGNORECASE)
+_XML_PLAIN_NAME_RE = re.compile(r"^[\"'\s]*=?[\"'\s]*([\w:.\-]+)[\"'\s]*$")
+
+_XML_TOOL_ALIASES = {
+    "read": "read", "read_file": "read", "view_file": "read",
+    "grep": "grep", "search": "grep", "search_files": "grep",
+    "glob": "glob", "list_files": "glob", "find_files": "glob",
+    "write": "write", "write_file": "write", "create_file": "write",
+    "edit": "write", "edit_file": "write", "replace_in_file": "write",
+    "ui_design": "ui_design", "asset": "asset",
+    "skill": "skill", "problems": "problems", "engine": "engine",
+}
+
+
+_XML_RAW_VALUE_KEYS = {"content", "find", "replace", "old", "new"}
+
+
+def _xml_tool_calls(raw: str) -> list[tuple[str, dict]]:
+    """`<tool_call…>…</tool_call>` -> [(tên tool hoặc "", args)]."""
+    calls: list[tuple[str, dict]] = []
+    for opener, body in XML_TOOL_RE.findall(raw):
+        args: dict = {}
+        for key, value in XML_ARG_RE.findall(body):
+            key = str(key).strip().lower()
+            if not key or key in args:
+                continue
+            # Value mã nguồn giữ nguyên từng ký tự (newline cuối rất quan trọng);
+            # các key mô tả (path/op/pattern…) thì cắt khoảng trắng thừa.
+            if key in _XML_RAW_VALUE_KEYS:
+                args[key] = str(value)
+            else:
+                args[key] = str(value).strip()
+        name = ""
+        opener = str(opener or "").strip()
+        if opener:
+            match = _XML_NAME_ATTR_RE.search(opener) or _XML_PLAIN_NAME_RE.match(opener)
+            if match:
+                name = match.group(1)
+        if not name:
+            name = str(args.pop("tool", "") or "")
+        calls.append((name.strip().lower(), args))
+    return calls
+
+
+def _xml_infer_tool(args: dict) -> str:
+    """Không có tên tool trong thẻ -> đoán từ chính các args đã cho."""
+    keys = set(args)
+    if {"path", "content"} <= keys or (keys & {"find", "replace"}) and "path" in keys:
+        return "write"
+    if keys & {"start_line", "end_line", "scope"} and "path" in keys:
+        return "read"
+    if "pattern" in keys:
+        return "glob" if any(ch in str(args["pattern"]) for ch in "*?[") and "include" not in keys else "grep"
+    if "path" in keys and len(keys) <= 3:
+        return "read"
+    op = str(args.get("op") or "").strip().lower()
+    if op in {"catalog", "screens", "get", "add_screen", "add_item", "export"}:
+        return "ui_design"
+    if op == "make":
+        return "asset"
+    if op == "read" and "name" in keys:
+        return "skill"
+    if op in {"list", "count"}:
+        return "problems" if keys == {"op"} else "skill"
+    return ""
+
+
+def _xml_to_actions(name: str, args: dict) -> tuple[list, list]:
+    """(ToolAction[], CodeEditAction[]) từ một lời gọi XML đã suy ra args."""
+    tools: list[ToolAction] = []
+    edits: list[CodeEditAction] = []
+    reason = str(args.pop("reason", "") or "").strip()
+    tool = _XML_TOOL_ALIASES.get(name, "") or _xml_infer_tool(args)
+    if tool == "engine":
+        tool, args = _normalise_engine_call(args)
+    if tool == "write":
+        path = str(args.get("path") or "").strip()
+        content = args.get("content")
+        find = args.get("find", args.get("old"))
+        replace = args.get("replace", args.get("new"))
+        if path and (content is not None or find is not None):
+            edits.append(
+                CodeEditAction(
+                    path=path,
+                    reason=reason,
+                    content=str(content) if content is not None else None,
+                    find=str(find) if find is not None else None,
+                    replace=str(replace) if replace is not None else "",
+                    replace_all=str(args.get("replace_all") or "").lower() in {"1", "true", "yes"},
+                )
+            )
+    elif tool in TOOL_NAMES:
+        tools.append(ToolAction(tool=tool, args=dict(args), reason=reason))
+    return tools, edits
 
 # Tên công cụ hợp lệ trong khối ```luas30-tool — nguồn DUY NHẤT, dùng cho cả
 # bước lọc lúc parse lẫn bước quảng bá trong prompt. Thêm công cụ mới thì thêm
 # ở đây, đừng sửa hai nơi.
 READONLY_TOOL_NAMES = ("read", "grep", "glob")
 DESIGN_TOOL_NAMES = ("ui_design", "asset")
-# "engine": đọc lõi Lua MRE của chính IDE (templates/*/src, sdk/luas30, engine/,
-# compat/, extensions/) — những thứ nằm NGOÀI thư mục dự án nên read/grep/glob
-# thông thường không với tới.
-CORE_TOOL_NAMES = ("engine",)
-TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + CORE_TOOL_NAMES
+# "skill": nạp quy trình làm việc theo yêu cầu (xem skill_service.py).
+# "problems": đọc bảng PROBLEMS thật của IDE — handler nằm ở AIChatView vì
+# dữ liệu thuộc main_window, không thuộc service nào cả.
+WORKBENCH_TOOL_NAMES = ("skill", "problems")
+TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + WORKBENCH_TOOL_NAMES
+
+# Tool "engine" cũ ĐÃ BỊ GỘP vào read/grep/glob bằng args.scope="engine" —
+# hai bộ tool cùng đọc tệp chỉ khác gốc là trùng lặp thuần tuý. Model vẫn có
+# thể phát lời gọi kiểu cũ; _normalise_engine_call dịch chúng sang dạng mới.
+_ENGINE_OP_TO_TOOL = {"read": "read", "grep": "grep", "glob": "glob", "list": "glob"}
+
+
+def _normalise_engine_call(args: dict) -> tuple[str, dict]:
+    """`{"tool":"engine","args":{"op":...}}` -> (tên tool mới, args có scope)."""
+    value = dict(args or {})
+    op = str(value.pop("op", None) or "read").strip().lower()
+    tool = _ENGINE_OP_TO_TOOL.get(op, "read")
+    if op == "list":
+        scope_path = str(value.pop("path", "") or "").strip().strip("/")
+        value.setdefault("pattern", f"{scope_path}/*" if scope_path else "**/*")
+    value["scope"] = "engine"
+    return tool, value
 
 
 @dataclass(frozen=True)
@@ -265,11 +388,13 @@ def parse_agent_response(
             if not isinstance(item, dict):
                 continue
             tool = str(item.get("tool") or "").strip().lower()
-            if tool not in TOOL_NAMES:
-                continue
             args = item.get("args")
             if not isinstance(args, dict):
                 args = {key: value for key, value in item.items() if key not in {"tool", "reason"}}
+            if tool == "engine":
+                tool, args = _normalise_engine_call(args)
+            if tool not in TOOL_NAMES:
+                continue
             tools.append(
                 ToolAction(
                     tool=tool,
@@ -312,6 +437,15 @@ def parse_agent_response(
 
     recovered_plain_edit = False
     visible_source = raw
+    # Lời gọi XML (model không tuân theo fenced protocol) — chạy SAU vòng lặp
+    # JSON để ưu tiên định dạng chuẩn và khử trùng lặp.
+    for name, xml_args in _xml_tool_calls(raw):
+        xml_tools, xml_edits = _xml_to_actions(name, xml_args)
+        for action in xml_tools:
+            if any(a.tool == action.tool and a.args == action.args for a in tools):
+                continue
+            tools.append(action)
+        edits.extend(xml_edits)
     if allow_plain_code_edit and not edits and active_path:
         recovered, recovered_visible = _recover_plain_fenced_edit(
             raw,
@@ -328,6 +462,7 @@ def parse_agent_response(
     visible = SHELL_RE.sub("", visible)
     visible = TOOL_RE.sub("", visible)
     visible = EDIT_RE.sub("", visible)
+    visible = XML_TOOL_RE.sub("", visible)
     visible = re.sub(r"\n{3,}", "\n\n", visible).strip()
     return ParsedAgentResponse(
         visible_text=visible,
@@ -439,19 +574,56 @@ def agent_protocol_prompt(
             else
             "Code editing is disabled. Do not emit luas30-edit blocks."
         )
+    # Tool "engine" cũ giờ là args.scope="engine" của read/grep/glob — một lời
+    # gọi mô tả, không phải một bộ máy mới.
+    engine_scope_note = (
+        'Engine scope: add "scope":"engine" to read/grep/glob to open the LuaS30 IDE '
+        "itself — the MRE core that a project cannot see: the thin Lua wrapper "
+        "templates/basic/src/engine.lua, the luaL_Reg funcs[] table registered by "
+        "luas30_bridge_open in engine/src/runtime_bridge.c (a function absent there "
+        "does not exist), other "
+        "templates, the MRE SDK surface (sdk/luas30: abi/symbols.json, include/ls30), "
+        "device compatibility fixtures (compat/) and doc/ai/. Paths are relative to "
+        "the IDE root and only those folders are readable. Never invent engine "
+        'functions — verify with scope=engine grep/read first. Example:\n'
+        "```luas30-tool\n"
+        '{"tool":"read","args":{"path":"templates/basic/src/engine.lua","start_line":1,'
+        '"end_line":200,"scope":"engine"},"reason":"Learn the real Engine API"}\n'
+        "```"
+    )
+    skills_note = (
+        "Skill tool: <agent_skills> in the context lists on-demand procedure "
+        "documents (project/engine/extension skills). When one fits the task, load "
+        "its full text and follow it:\n"
+        "```luas30-tool\n"
+        '{"tool":"skill","args":{"op":"read","name":"engine-api-check"},'
+        '"reason":"Load the procedure"}\n'
+        "```\n"
+        "op list re-discovers skills; op read needs args.name.\n"
+        "Problems tool: read the IDE's live PROBLEMS panel (Lua diagnostics the "
+        "editor collected) to analyze and fix errors autonomously:\n"
+        "```luas30-tool\n"
+        '{"tool":"problems","args":{"op":"list"},"reason":"Current diagnostics"}\n'
+        "```\n"
+        "Use it after applying edits to verify the fix, and again at the end of a "
+        "bug-fixing task — follow the problems-autofix skill when one is listed."
+    )
     readonly_tools = (
         "Read-only codebase tools are available and may be used in any access mode. "
-        "When you need information that is not already in context, request exactly one tool and wait for its result. "
-        "Supported tools are read, grep, and glob. Emit a fenced JSON block such as:\n"
+        "You may emit SEVERAL luas30-tool blocks in one answer — they run sequentially "
+        "in order and every result is returned before you continue. When you need "
+        "information that is not already in context, ask for it instead of guessing. "
+        "Supported tools: read (args.path + optional start_line/end_line), "
+        "grep (args.pattern, optional args.include), glob (args.pattern). Example:\n"
         "```luas30-tool\n"
         '{"tool":"read","args":{"path":"main.lua","start_line":1,"end_line":220},"reason":"Inspect current implementation"}\n'
         "```\n"
-        "For grep use args.pattern plus optional args.include; for glob use args.pattern. "
-        "Use project-relative paths and never request secrets or .env files."
+        "Use project-relative paths and never request secrets or .env files.\n"
+        + engine_scope_note + "\n" + skills_note
     )
     design_tools = (
         "UI Design and Assets tools let you read this project's interface design and asset "
-        "library. Emit exactly one per turn:\n"
+        "library. One block per operation:\n"
         "```luas30-tool\n"
         '{"tool":"ui_design","args":{"op":"catalog"},"reason":"See available component types"}\n'
         "```\n"
@@ -485,26 +657,12 @@ def agent_protocol_prompt(
         " Design changes and asset generation are unavailable in this mode; do not emit "
         "ui_design or asset write ops."
     )
-    core_tools = (
-        "The engine tool reads the LuaS30 IDE itself — the MRE core that a project cannot "
-        "see: the thin Lua wrapper templates/basic/src/engine.lua, the global `engine` table "
-        "registration in engine/src/runtime_lua.c (a function absent there does not exist), "
-        "other templates, the MRE SDK surface (sdk/luas30: abi/symbols.json, include/ls30), "
-        "device compatibility fixtures (compat/) and installed extensions (extensions/). "
-        "Use it whenever you must know the real core API before editing project code — never "
-        "invent engine functions. Emit one block with op read|grep|glob|list, e.g.:\n"
-        "```luas30-tool\n"
-        '{"tool":"engine","args":{"op":"read","path":"templates/basic/src/engine.lua","start_line":1,"end_line":200},'
-        '"reason":"Learn the real Engine API before writing main.lua"}\n'
-        "```\n"
-        "Paths are relative to the IDE root; only the folders above are readable."
-    )
     return (
         "Do not reveal private chain-of-thought. Instead, when useful, provide only a brief "
         "high-level reasoning summary (1-5 short bullets) in this block:\n"
         "```luas30-summary\n- inspected relevant files\n- next step and why\n```\n"
         "The summary must describe conclusions/actions, not hidden token-by-token reasoning.\n"
-        + readonly_tools + "\n" + core_tools + "\n" + design_tools + "\n" + shell + "\n" + edits
+        + readonly_tools + "\n" + design_tools + "\n" + shell + "\n" + edits
         + (
             "\nFull Access automation is active: use the available read tools, code edits and shell actions autonomously, "
             "validate your work when useful, and stop only when the requested task is complete or you truly need user input."

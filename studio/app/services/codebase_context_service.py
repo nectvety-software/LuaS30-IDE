@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.services.extension_service import ExtensionService
+from app.services.skill_service import SkillService
 
 IGNORED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__",
@@ -31,11 +32,11 @@ INSTRUCTION_FILE_LIMIT = 64000
 INSTRUCTION_TOTAL_BUDGET = 160000
 
 # Bản đồ "lõi Lua MRE" mà một dự án không tự thấy được — đưa thẳng vào mọi
-# system prompt để agent biết chính xác chỗ phải đọc (tool "engine") thay vì
-# bịa API của nền tảng di động khác.
+# system prompt để agent biết chính xác chỗ phải đọc (read/grep/glob với
+# scope="engine") thay vì bịa API của nền tảng di động khác.
 ENGINE_CORE_ENTRIES = (
     ("templates/basic/src/engine.lua", "wrapper Lua mỏng quanh bảng global `engine` — API mà dự án thật sự gọi"),
-    ("engine/src/runtime_lua.c", "chỗ đăng ký bảng global `engine` (C→Lua): mọi hàm engine.* có thật đều khai ở đây"),
+    ("engine/src/runtime_bridge.c", "mảng `luaL_Reg funcs[]` + luas30_bridge_open — mọi hàm engine.* có thật đều đăng ký ở đây (tên global là `engine`, alias `mre`)"),
     ("templates/basic/main.lua", "điểm vào dự án chuẩn"),
     ("templates/basic/conf.lua", "cấu hình VXPEngine (màn hình 240x320, tài nguyên)"),
     ("templates/basic/project.json", "manifest build .vxp"),
@@ -60,6 +61,7 @@ class CodebaseContextService:
     def __init__(self, engine_root: Path) -> None:
         self.engine_root = Path(engine_root).resolve()
         self.extension_service = ExtensionService(self.engine_root)
+        self.skill_service = SkillService(self.engine_root)
 
     @staticmethod
     def _safe_text_file(path: Path) -> bool:
@@ -105,10 +107,10 @@ class CodebaseContextService:
             "doc/ai/SKILLS.md", "doc/ai/SKILL.md", "doc/ai/PROMPT.md",
         ):
             candidates.append(self.engine_root/rel)
-        # Tài liệu của từng extension đã cài cũng là luật — mô tả đúng cách
-        # dùng tool của extension đó mà agent phải biết khi người dùng hỏi.
-        for manifest in self.extension_service.discover():
-            candidates.extend(manifest.instruction_docs())
+        # Tài liệu của extension KHÔNG nạp toàn văn ở đây nữa — mỗi lượt hội
+        # thoại trả lại phí token cho chúng trong khi model hiếm khi dùng tới.
+        # SkillService biến chúng thành skill nạp theo yêu cầu (tool `skill`),
+        # còn <installed_extensions> vẫn liệt kê đầy đủ để agent biết đường gọi.
 
         result, seen = [], set()
         for path in candidates:
@@ -257,8 +259,8 @@ class CodebaseContextService:
             return ""
         return (
             "<engine_core root=\"LuaS30 IDE installation — outside any project\">\n"
-            "Đọc các tệp này bằng tool `engine` (op read/grep/glob/list) trước khi sửa "
-            "code chạm API engine; tuyệt đối không bịa hàm của nền tảng khác.\n"
+            'Đọc các tệp này bằng read/grep/glob với args.scope="engine" trước khi '
+            "sửa code chạm API engine; tuyệt đối không bịa hàm của nền tảng khác.\n"
             + "\n".join(lines) + "\n</engine_core>"
         )
 
@@ -290,6 +292,9 @@ class CodebaseContextService:
         core = self.engine_core_summary()
         if core:
             parts.append(core)
+        skills = self.skill_service.index_text(project)
+        if skills:
+            parts.append(skills)
         if instruction_sections:
             parts += ["<instruction_documents>", *instruction_sections, "</instruction_documents>"]
         if sources:
