@@ -32,6 +32,29 @@ theo tên tệp tài liệu gốc.
   động "EXPLORER - <TÊN DỰ ÁN>", tab mã có icon theo loại tệp + vạch
   accent cyan trên tab đang mở, status bar thêm badge `UTF-8` và
   `Spaces: 4`.
+- Chuẩn tiện ích mở rộng mới: mọi thư mục `extensions/<id>/` có
+  `extension.json` được `ExtensionService` tự phát hiện, hiện động trong
+  menu "Công cụ → Tiện ích mở rộng", mở thành tab công cụ
+  `extension:<id>` (lưu/restore qua workspace session).
+- Trang "Cửa hàng tiện ích mở rộng" (`ExtensionMarketView`) dạng card nền
+  tối theo ảnh mẫu: ô icon bo góc, tên, mô tả hai dòng, hàng
+  "from · version · added", nút `+` mở tiện ích; tab `extensions-market`
+  được lưu lại giữa các phiên.
+- `ExtensionHostView`: host QWebEngineView + cầu nối QWebChannel
+  `window.luaS30` (extension/project/notify/writeFiles); ghi tệp bị giới
+  hạn trong thư mục dự án, chặn `..`, tên tuyệt đối, tệp bí mật; trang
+  nhận sự kiện `luas30-bridge-ready`.
+- `sprite-sheet.html` → extension chuẩn đầu tiên
+  `extensions/sprite-sheet/` (manifest + `ui/index.html` + `SKILLS.md`),
+  bổ sung nút "Ghi vào dự án (PNG + atlas.json)" xuất thẳng sprite vào
+  `assets/sprites/` của dự án đang mở.
+- ChatAI chuyên Lua S30+ MRE VXP: thêm công cụ đọc-lõi `engine`
+  (read/list/glob/grep trong templates·sdk·engine·compat·doc/ai·extensions),
+  ngữ cảnh nhúng `<installed_extensions>` + `<engine_core>` (ranh giới
+  Lua→C thật: `engine.lua` wrapper mỏng quanh bảng `engine` đăng ký trong
+  `engine/src/runtime_lua.c`), SKILLS.md của extension được nạp làm luật
+  agent, system prompt yêu cầu kiểm chứng API bằng tool `engine` thay vì
+  giả định hàm mobile-Lua/love2d.
 - Sửa resolve màu icon, pipeline build UTF-8 và khôi phục đường dẫn
   toolchain (commits 71e0c25, 0cf75b9).
 

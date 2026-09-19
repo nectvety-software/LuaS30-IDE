@@ -1386,4 +1386,43 @@ QPushButton#GhostButton:hover { background: @BORDER_STRONG; color: @TEXT; }
 QWidget#ExtensionHostHeader { background: @BG_INK; border-bottom: 1px solid @BORDER; }
 QWidget#ExtensionHostHeader QLabel { background: transparent; }
 QLabel#ExtensionHostTitle { color: @TEXT; font-size: 12px; font-weight: 700; }
+
+/* Trang "Tiện ích mở rộng" dạng card marketplace — nền tối palette chuẩn */
+QWidget#ExtensionMarketPage { background: @BG_SURFACE; }
+QWidget#ExtensionMarketHeader { background: @BG_INK; border-bottom: 1px solid @BORDER; }
+QLabel#ExtensionMarketIntro { color: @TEXT_4; font-size: 11px; background: transparent; }
+QToolButton#ExtensionMarketRefresh {
+    background: @BG_PRESSED;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 8px;
+    color: @TEXT_2;
+    font-size: 14px;
+}
+QToolButton#ExtensionMarketRefresh:hover { background: @BORDER_STRONG; color: @TEXT; }
+QScrollArea#ExtensionMarketScroll { background: @BG_SURFACE; border: 0; }
+QWidget#ExtensionMarketBody { background: @BG_SURFACE; }
+QLabel#ExtensionMarketEmpty { color: @TEXT_4; font-size: 12px; background: transparent; }
+QFrame#ExtensionMarketCard {
+    background: @BG_RAISED;
+    border: 1px solid @BORDER;
+    border-radius: 12px;
+}
+QFrame#ExtensionMarketCard:hover { border: 1px solid @BORDER_HOVER; background: @BG_HOVER; }
+QLabel#ExtensionMarketIcon { background: @BG_PRESSED; border-radius: 8px; }
+QLabel#ExtensionMarketTitle { color: @TEXT; font-size: 13px; font-weight: 700; background: transparent; }
+QLabel#ExtensionMarketDesc { color: @TEXT_3; font-size: 11px; background: transparent; }
+QLabel#ExtensionMarketMeta { color: @TEXT_5; font-size: 10px; background: transparent; }
+QToolButton#ExtensionMarketOpen {
+    background: transparent;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 8px;
+    color: @TEXT_2;
+    font-size: 16px;
+    font-weight: 600;
+}
+QToolButton#ExtensionMarketOpen:hover {
+    background: @BG_PRESSED;
+    border: 1px solid @BORDER_HOVER;
+    color: @TEXT;
+}
 """)

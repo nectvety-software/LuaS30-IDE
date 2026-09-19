@@ -529,3 +529,61 @@ operations:
 
 Switching projects closes only source-file tabs after unsaved-change checks. Tool tabs
 remain open and refresh their project context.
+
+## Extensions (tiện ích mở rộng)
+
+Any folder under repo-root `extensions/` that carries an `extension.json` is discovered
+at startup by `app/services/extension_service.py`, listed dynamically under the
+`Công cụ → Tiện ích mở rộng` menu, and opened as a persistent tool tab
+(key `extension:<id>`, restored by the workspace session file).
+
+`Công cụ → Tiện ích mở rộng → Cửa hàng tiện ích mở rộng…` opens the marketplace tab
+(key `extensions-market`, also persisted): one card per installed extension — icon
+tile, name, two-line description, `from · version · added` footer and a `+` button
+that opens the extension (clicking the card works too).
+`ExtensionMarketView` lives in `app/views/extension_market_view.py`.
+
+Manifest fields (`extension.json`):
+
+- `id` — must equal the folder name;
+- `name`, `version`, `description`, `author`;
+- `type` — only `"webview"` is supported today;
+- `entry` — relative path to the HTML page, confined to the extension folder;
+- `icon` — a `fa5s.*` name (Segoe glyph fallback applies);
+- `requiresProject` — defaults to `true`; the tool refuses to open without a project.
+
+Folder layout (reference implementation: `extensions/sprite-sheet/`):
+
+```text
+extensions/sprite-sheet/
+  extension.json     # manifest above
+  ui/index.html      # entry page (plain HTML+JS, loaded via file://)
+  SKILLS.md          # optional agent law — loaded into ChatAI context bundle
+```
+
+`ExtensionHostView` (`app/views/extension_host_view.py`) hosts a `QWebEngineView` with a
+QWebChannel bridge registered as `luaS30` plus an injected shim (qwebchannel.js is
+reused from the Qt resource, so nothing is bundled). The page gets:
+
+- `window.luaS30Ready` / `luas30-bridge-ready` event — bridge availability;
+- `window.luaS30.extension(cb)` — manifest info;
+- `window.luaS30.project(cb)` — `{root, name}` of the current project;
+- `window.luaS30.notify(message, level)` — status-bar line;
+- `window.luaS30.writeFiles(list, cb)` — batch write into the project. Items are
+  `{path, text}` or `{path, base64}` (data-URL prefix allowed). Writes are confined
+  to the project root, capped at 512 files / 8 MB each, and reject `..`, absolute
+  paths and blocked names (`.env`, `.git`, …). The result reports per-file errors,
+  and the explorer/asset views refresh after a successful batch.
+
+### ChatAI specialization and the `engine` tool
+
+The agent protocol (`TOOL_NAMES`) adds a read-only `engine` tool that inspects the IDE
+installation itself — only `templates/`, `sdk/`, `engine/`, `compat/`, `doc/ai/` and
+`extensions/` — with ops `read | list | glob | grep`. The context bundle
+(`CodebaseContextService`) embeds `<installed_extensions>` (manifest briefing +
+`SKILLS.md` of every extension) and `<engine_core>` (pointer list at the real Lua→C
+boundary: `templates/basic/src/engine.lua` is a thin wrapper over the global `engine`
+table registered in `engine/src/runtime_lua.c`). The system prompt tells the model to
+verify engine APIs with the `engine` tool instead of assuming mobile-Lua/love2d
+functions, and to prefer documented extension workflows.
+

@@ -77,7 +77,7 @@ BUILD_TARGETS = (
 )
 
 # Tool tabs that survive a restart via the workspace session file.
-_PERSISTENT_TOOL_TABS = ("settings", "projects", "project-doctor", "compat-matrix", "toolchain-doctor")
+_PERSISTENT_TOOL_TABS = ("settings", "projects", "project-doctor", "compat-matrix", "toolchain-doctor", "extensions-market")
 
 
 class VxpMainWindow(QWidget):
@@ -1247,6 +1247,12 @@ class VxpMainWindow(QWidget):
         """Nạp lại menu 'Tiện ích mở rộng' mỗi lần mở — thêm thư mục extension
         mới vào engine_root/extensions là xuất hiện ngay, không cần khởi động lại."""
         menu.clear()
+        store = menu.addAction("Cửa hàng tiện ích mở rộng…")
+        store.setIcon(icon("fa5s.th"))
+        store.triggered.connect(
+            lambda _checked=False: self._open_extensions_market()
+        )
+        menu.addSeparator()
         installed = self.extension_service.discover(refresh=True)
         if not installed:
             empty = menu.addAction("(Chưa có tiện ích nào trong thư mục extensions/)")
@@ -1259,6 +1265,23 @@ class VxpMainWindow(QWidget):
             action.triggered.connect(
                 lambda _checked=False, ext_id=manifest.id: self._open_extension(ext_id)
             )
+
+    def _open_extensions_market(self):
+        """Tab công cụ liệt kê mọi extension đã cài dạng card (như ảnh mẫu)."""
+        from app.views.extension_market_view import ExtensionMarketView
+
+        def factory():
+            return ExtensionMarketView(
+                self.extension_service, on_open=self._open_extension
+            )
+
+        self._enter_editor()
+        return self.tabs.open_tool_tab(
+            "extensions-market",
+            "Tiện ích mở rộng",
+            factory,
+            icon("fa5s.puzzle-piece"),
+        )
 
     def _open_extension(self, extension_id: str):
         manifest = self.extension_service.manifest(extension_id)
@@ -1465,6 +1488,8 @@ class VxpMainWindow(QWidget):
             return self._open_toolchain_doctor() is not None
         if key.startswith("extension:"):
             return self._open_extension(key.split(":", 1)[1]) is not None
+        if key == "extensions-market":
+            return self._open_extensions_market() is not None
         return False
 
     def _schedule_workspace_save(self, *_args) -> None:
