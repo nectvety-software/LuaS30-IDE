@@ -129,6 +129,14 @@ class VxpMainWindow(QWidget):
         self._ai_visible = False
         self._vxp_emu_window: VxpEmuWindow | None = None
         self.run_session_dialog: RunSessionDialog | None = None
+        # Nén bão output build/emu: gom nhiều chunk rồi vẽ MỘT lần mỗi nhịp
+        # ~60ms, thay vì repaint cả console + build_log + dialog cho TỪNG chunk
+        # (nguyên nhân chính gây lag khi compile in hàng trăm dòng).
+        self._console_pending: list[str] = []
+        self._console_flush_timer = QTimer(self)
+        self._console_flush_timer.setSingleShot(True)
+        self._console_flush_timer.setInterval(60)
+        self._console_flush_timer.timeout.connect(self._flush_console)
         self._env_update_proc = None
         self._resizing = False
         self._resize_edge: str | None = None
@@ -1713,6 +1721,16 @@ class VxpMainWindow(QWidget):
     def _append_console(self, text: str) -> None:
         if not text:
             return
+        self._console_pending.append(text)
+        if not self._console_flush_timer.isActive():
+            self._console_flush_timer.start()
+
+    def _flush_console(self) -> None:
+        """Vẽ một lần mọi chunk đã gom — cắt số lần repaint xuống ~16 lần/giây."""
+        if not self._console_pending:
+            return
+        text = "".join(self._console_pending)
+        self._console_pending.clear()
         self.bottom.console.append(text)
         self.bottom.build_log.append(text)
         if self.run_session_dialog is not None:
@@ -1744,8 +1762,11 @@ class VxpMainWindow(QWidget):
             self.engine_state_label.setText("VXP Ready")
 
     def _on_runner_finished(self, exit_code: int, success: bool) -> None:
+        self._console_flush_timer.stop()
+        self._flush_console()   # đẩy nốt output đang gom trước dòng "hoàn tất"
+        stopped = bool(getattr(self.runner, "stopped_by_user", False))
         if self.run_session_dialog is not None:
-            self.run_session_dialog.set_running(False, success)
+            self.run_session_dialog.set_running(False, None if stopped else success)
             self.run_session_dialog.append_output(
                 f"[LuaS30] Tác vụ {'hoàn tất' if success else 'thất bại'} với mã {exit_code}."
             )

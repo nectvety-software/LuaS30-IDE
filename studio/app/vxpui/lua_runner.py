@@ -52,6 +52,7 @@ class LuaRunner(QObject):
         self.last_manifest: dict | None = None
         self._post_action = ""
         self._stopping = False
+        self.stopped_by_user = False
 
         build_service.started.connect(self._on_build_started)
         build_service.output.connect(self._on_build_output)
@@ -88,6 +89,7 @@ class LuaRunner(QObject):
 
     def stop(self) -> None:
         self._stopping = True
+        self.stopped_by_user = True
         self.build_service.cancel()
 
     def stop_vxpemu(self) -> None:
@@ -150,6 +152,7 @@ class LuaRunner(QObject):
             return False
         self._post_action = post_action
         self._stopping = False
+        self.stopped_by_user = False
         try:
             ok = self.build_service.start(Path(project))
         except (FileNotFoundError, NotADirectoryError, RuntimeError) as error:
@@ -190,7 +193,10 @@ class LuaRunner(QObject):
                 self._launch_manifest(manifest)
                 return
         elif not success:
-            self.output.emit("[Build] ✗ Biên dịch thất bại.")
+            if self.stopped_by_user:
+                self.output.emit("[Build] Đã dừng theo yêu cầu.")
+            else:
+                self.output.emit("[Build] ✗ Biên dịch thất bại.")
         self.finished.emit(code, bool(success))
 
     def _launch_manifest(self, manifest: dict) -> None:

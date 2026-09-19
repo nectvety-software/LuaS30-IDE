@@ -795,19 +795,46 @@ files are backed up under:
 
 before atomic replacement.
 
-## Bản quyền
+## Ghi công
 
-© Qeafivels All rights reserved. — <https://qeafivels.com/>
+LuaS30 IDE được dựng trên nền **rất nhiều** dự án mã nguồn mở và công cụ của
+người khác. Vì dùng nhiều nguồn như vậy, mục này **ghi công** các thành phần đó
+và chỉ rõ mỗi thứ đến từ đâu — thay vì tuyên bố bản quyền cho toàn bộ sản phẩm.
 
-LuaS30 IDE (Studio, LuaS30 Native SDK/API, build tooling, template, tài liệu và
-asset của dự án) là tài sản của Qeafivels. Không được sao chép, sửa đổi, phát
-hành, cấp phép lại hay tạo tác phẩm phái sinh, toàn bộ hoặc một phần, nếu không
-có sự cho phép trước bằng văn bản của Qeafivels. Chi tiết: [`LICENSE`](LICENSE).
+| Thành phần | Nguồn / tác giả | Giấy phép | Vai trò trong LuaS30 |
+|---|---|---|---|
+| **Python** | Python Software Foundation · <https://python.org> | PSF License | chạy Studio, launcher và tooling build |
+| **PySide6 / Qt for Python** | The Qt Company · <https://www.qt.io> | LGPL v3 (hoặc thương mại) | UI desktop Studio (kèm wheel 6.11.2) |
+| **Qt 6 runtime** | The Qt Company · <https://www.qt.io> | LGPL v3 | nhân UI cho Studio và các DLL giả lập kèm theo |
+| **Lua 5.1.5** | Lua.org, PUC-Rio · <https://www.lua.org> | giấy phép kiểu MIT (Lua) | runtime ngôn ngữ nhúng — `vendor/lua-5.1.5/COPYRIGHT` |
+| **GNU Arm Embedded Toolchain** (`arm-none-eabi`) | Arm / GNU · <https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain> | GPLv3 + GCC Runtime Library Exception | biên dịch ELF ARM (tải qua `tools/dependency_manager.py`, không commit) |
+| **Unicorn Engine** | unicorn-engine · <https://www.unicorn-engine.org> | GPLv2 | mô phỏng CPU trong `VXPEmu` |
+| **VXPEmu** | dự án giả lập đi kèm | theo bản phân phối gốc | giả lập chạy thử VXP (`emulator/`) |
+| **Inno Setup 6** | Jordan Russell · <https://jrsoftware.org/isinfo.php> | Inno Setup License | đóng gói file `Setup.exe` duy nhất |
+| **WiX Toolset** | .NET Foundation · <https://wixtoolset.org> | MS-RL | đóng gói MSI (`packaging/wix/`) |
+| **Segoe Fluent Icons / Segoe MDL2 Assets** | Microsoft (font hệ thống Windows) | theo Microsoft | lớp icon Studio — **không** bundle/phân phối lại |
+| **QtAwesome / Font Awesome** *(tuỳ chọn)* | qtawesome · fontawesome.com | MIT · CC BY 4.0 / SIL OFL | icon khi có sẵn, tự fallback sang Segoe MDL2 |
 
-Các thành phần bên thứ ba được dùng/bundle **không** thuộc phạm vi thông báo
-trên và vẫn theo giấy phép riêng của chúng — xem
-[`doc/legal/THIRD_PARTY_NOTICES.md`](doc/legal/THIRD_PARTY_NOTICES.md). Giấy phép
-Lua 5.1.5 đi kèm ở [`vendor/lua-5.1.5/COPYRIGHT`](vendor/lua-5.1.5/COPYRIGHT).
+Mỗi thành phần ở trên **vẫn thuộc giấy phép riêng của nó**; file thông báo đi kèm
+từng thành phần là nguồn có thẩm quyền cuối cùng và phải được giữ nguyên khi phân
+phối lại.
 
-Thông tin bản quyền này cũng hiện trong ứng dụng tại **About → About**.
+Phần mã **do dự án tự viết** — LuaS30 Studio, LuaS30 Native SDK/API (`ls30_*`),
+build tooling, template, tài liệu — mang thông báo
+
+> © Qeafivels All rights reserved. · <https://qeafivels.com/>
+
+và tuân theo Thỏa thuận cấp phép người dùng (EULA) trong [`LICENSE`](LICENSE).
+Thông báo này **không** mở rộng lên các thành phần bên thứ ba kể trên: với mỗi
+thành phần đó, giấy phép gốc của nó là quyết định.
+
+Chi tiết pháp lý và ghi công đầy đủ:
+
+- [`doc/legal/THIRD_PARTY_NOTICES.md`](doc/legal/THIRD_PARTY_NOTICES.md)
+- [`vendor/lua-5.1.5/COPYRIGHT`](vendor/lua-5.1.5/COPYRIGHT)
+- [`packaging/wix/LICENSE.TXT`](packaging/wix/LICENSE.TXT) — WiX, MS-RL
+- [`LICENSE`](LICENSE) — EULA cho phần mã dự án tự viết
+
+Trong ứng dụng, xem **About → Credits** và **About → Environment** để biết phiên
+bản thư viện thực sự đang chạy.
 

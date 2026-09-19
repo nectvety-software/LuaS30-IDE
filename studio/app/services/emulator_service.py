@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Signal
 
 from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
+from app.services.build_service import kill_process_tree
 
 
 class EmulatorService(QObject):
@@ -86,14 +84,12 @@ class EmulatorService(QObject):
 
     def stop(self) -> None:
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
+            pid = int(self.process.processId() or 0)
+            # run_emulator.py spawn VXPEmu.exe làm con. Giết đúng CÂY theo PID
+            # (thay vì /IM VXPEmu.exe toàn cục, vốn có thể tắt cả instance
+            # không liên quan) rồi mới kill() python cha.
+            kill_process_tree(pid)
             self.process.kill()
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/F", "/IM", "VXPEmu.exe"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
         self.state_changed.emit("Stopped")
         self.output.emit("[EMU] Stop requested.\n")
 

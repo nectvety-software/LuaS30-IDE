@@ -695,6 +695,9 @@ QFrame#AIConfigPanel { background: @BG_ALT; border-bottom: 1px solid @BORDER; }
 QTextBrowser#AIChatTranscript {
     background: @BG_INK; color: @TEXT_2; border: 0; padding: 8px; font-size: 11px;
 }
+QFrame#AIThinkingFrame { background: @BG_INK; border-top: 1px solid @BORDER; }
+QLabel#AIThinkingSpinner { color: @ACCENT; font-size: 13px; font-weight: 700; }
+QLabel#AIThinkingLabel { color: @TEXT_3; font-size: 10px; font-style: italic; }
 QFrame#AIChatComposer { background: @BG_INK; border-top: 1px solid @BORDER; }
 QPlainTextEdit#AIChatPrompt {
     background: @BG_ALT; color: @TEXT_2; border: 1px solid @BORDER_STRONG;

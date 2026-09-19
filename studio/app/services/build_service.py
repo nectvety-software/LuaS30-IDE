@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -8,6 +10,31 @@ from PySide6.QtCore import QObject, QProcess, Signal
 
 from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
+
+
+def kill_process_tree(pid: int) -> None:
+    """Diệt trọn CÂY tiến trình (cha + mọi con cháu).
+
+    `build.py` spawn `arm-none-eabi-gcc` / `verify_elf.py` … làm tiến trình CON.
+    Trên Windows, `QProcess.kill()` chỉ giết python cha; lũ con vẫn giữ tay cầm
+    stdout của đường ống mở -> Qt không bao giờ phát `finished()`, hộp thoại
+    Run kẹt ở "Đang chạy" và CPU vẫn bị chiếm (lag). `taskkill /T` mới dọn hết.
+    """
+    if pid <= 0:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+    else:
+        try:
+            os.killpg(os.getpgid(pid), 9)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
 
 
 class BuildService(QObject):
@@ -121,7 +148,13 @@ class BuildService(QObject):
         if not self.active or not self.process:
             return
         self.output.emit("\n[BUILD] Cancel requested.\n")
-        self.process.kill()
+        pid = int(self.process.processId() or 0)
+        # Giết trọn cây trước: nếu chỉ kill() python cha, gcc con vẫn giữ pipe
+        # stdout mở -> Qt kẹt, không phát finished(), dialog không bao giờ hết
+        # "Đang chạy" và máy vẫn lag vì compile chạy nền.
+        kill_process_tree(pid)
+        if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.kill()
 
     def _read(self) -> None:
         if not self.process:

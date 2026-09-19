@@ -862,6 +862,8 @@ class RunSessionDialog(CustomDialog):
         self.output = QPlainTextEdit()
         self.output.setObjectName("RunSessionOutput")
         self.output.setReadOnly(True)
+        # Giới hạn bộ nhớ đệm + chi phí repaint khi build in hàng nghìn dòng.
+        self.output.setMaximumBlockCount(2000)
         self.output.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.add_body_widget(self.output, 1)
 

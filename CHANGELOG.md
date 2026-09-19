@@ -140,6 +140,35 @@ theo tên tệp tài liệu gốc.
   `reload_current_screen()` (bỏ qua nếu canvas còn thay đổi chưa lưu), và
   `_apply_ai_changes` gọi designer refresh khi AI vừa ghi `ui_design.json` hoặc
   `assets/`. Thêm 3 check hồi quy vào `ui_designer_check.py`.
+- Sửa nút "Dừng" không dừng được khi build/run (hộp thoại kẹt "Đang chạy",
+  máy vẫn lag vì compile âm ỉ): `QProcess.kill()` trên Windows chỉ giết tiến
+  trình python cha, còn `arm-none-eabi-gcc`/`verify_elf.py`/`VXPEmu.exe` là con
+  cháu vẫn giữ tay cầm stdout mở → Qt không phát `finished()`. Thêm
+  `kill_process_tree()` (`taskkill /F /T /PID`, POSIX dùng `killpg`) mà
+  `BuildService.cancel()` và `EmulatorService.stop()` gọi trước khi `kill()`;
+  `stop()` của giả lập thôi `taskkill /IM VXPEmu.exe` toàn cục (tắt nhầm cả
+  instance không liên quan) để chuyển sang diệt đúng cây theo PID.
+  `LuaRunner.stopped_by_user` phân biệt "Đã dừng" với "thất bại" khi báo kết quả.
+- Tối ưu IDE hết giật khi run giả lập: `VxpMainWindow` gom output console vào
+  bộ đệm và chỉ repaint console + build log + hộp thoại Run mỗi ~60ms
+  (`_flush_console`, thay vì vẽ lại cho TỪNG chunk hàng trăm dòng compile); hộp
+  thoại Run giới hạn `setMaximumBlockCount(2000)` để log dài không phình.
+- Chat AI hiện "hiệu ứng suy luận" của agent theo ảnh mẫu: mỗi lượt chạy tool
+  chèn khối thu gọn `▸ Đã chạy N công cụ` vào transcript (bấm mở ra xem tên tool
+  + lý do, giữ nguyên khi chuyển phiên qua `_render_history`), kèm dòng trạng
+  thái có icon braille quay `⠿ Đang suy nghĩ… · Bước i` hiện/ẩn theo vòng đời
+  agent (`_set_agent_active` bật/tắt `QTimer`, `_set_think_phase` đổi câu theo
+  đọc ngữ cảnh · chạy công cụ · soạn code).
+- AI Agents luôn trả lời bằng tiếng Việt: `_system_prompt` thêm chỉ dẫn BẮT BUỘC
+  dịch `visible_text`, `reasoning_summary` và `reason` của tool sang tiếng Việt,
+  đồng thời giữ nguyên mã nguồn, tên hàm/biến, đường dẫn và lệnh shell.
+- README: đổi mục "Bản quyền" thành "Ghi công". Vì IDE dùng nhiều nguồn bên thứ
+  ba (Python/PSF, PySide6·Qt LGPLv3, Lua 5.1.5 MIT-style, GNU Arm Toolchain
+  GPLv3+GCC-exception, Unicorn GPLv2, Inno Setup, WiX MS-RL, font Segoe) nên
+  không tuyên bố bản quyền bao trùm; thay bằng bảng liệt kê thư viện + nguồn và
+  thu gọn thông báo `© Qeafivels All rights reserved.` chỉ cho phần mã do dự án
+  tự viết (khớp EULA `LICENSE` mục 5 — giữ nguyên chuỗi để
+  `validate_about_credits.py` vẫn xanh).
 - UI Designer nâng cấp chỉnh sửa theo chuẩn Canva: hoàn tác/đi lại theo từng
   bước (`Ctrl+Z`/`Ctrl+Shift+Z`, tối đa 60 trạng thái, chọn lại đúng các thành
   phần cũ), chọn nhiều bằng khung cao-su/`Shift`+click/`Ctrl+A`, resize 8 tay
