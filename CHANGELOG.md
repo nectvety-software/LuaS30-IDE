@@ -226,6 +226,9 @@ theo tên tệp tài liệu gốc.
   (không tự loop model khi fail), Plan mode từ chối chạy. Tài liệu:
   `doc/ai/skills/vxp-build-run/SKILL.md`, `doc/studio/STUDIO_GUIDE.md`. Validator:
   `tools/validate_ai_run_app.py`.
+- `run.bat`: bỏ hard-code số phiên bản — banner + log giờ ĐỌC TRỰC TIẾP từ file
+  `VERSION` gốc repo (`set /p APP_VERSION`) nên luôn khớp, không phải sửa tay mỗi
+  lần bump version.
 
 
 ## 1.15.0 — AI Workbench v1

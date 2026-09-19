@@ -3,7 +3,10 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 rem ============================================================
-rem LuaS30 IDE 1.0.1 Smart Launcher (kieu VXPEngine: subroutine)
+rem LuaS30 IDE Smart Launcher (kieu VXPEngine: subroutine)
+rem
+rem So phien ban duoc DOC TRUC TIEP tu file VERSION o goc repo luc
+rem chay (khong hard-code o day nua), dung cho banner + log.
 rem
 rem Commands:
 rem   run.bat              chay Studio (mac dinh)
@@ -44,6 +47,11 @@ rem Isolate child Python from host PYTHON* hijacks / leftover project paths.
 set "PYTHONPATH="
 set "PYTHONHOME="
 set "PYTHONSTARTUP="
+
+rem Doc phien ban hien hanh tu file VERSION (dong dau tien). Mac dinh an toan
+rem neu thieu file de banner/log khong trong trang.
+set "APP_VERSION=0.0.0"
+if exist "%ROOT_DIR%VERSION" set /p APP_VERSION=<"%ROOT_DIR%VERSION"
 
 if /I "%~1"=="deps"  ( set "COMMAND=deps"  & shift & goto :parse_args )
 if /I "%~1"=="check" ( set "COMMAND=check" & shift & goto :parse_args )
@@ -324,7 +332,7 @@ set "PIP_CACHE_DIR=!LUAS30_APPDATA!\cache\pip"
 
 >>"!LOG!" echo(
 >>"!LOG!" echo ============================================================
->>"!LOG!" echo LuaS30 IDE 1.0.1 Smart Launcher
+>>"!LOG!" echo LuaS30 IDE !APP_VERSION! Smart Launcher
 >>"!LOG!" echo Started: %DATE% %TIME%
 >>"!LOG!" echo Engine: %CD%
 >>"!LOG!" echo AppData: !LUAS30_APPDATA!
@@ -333,7 +341,7 @@ set "PIP_CACHE_DIR=!LUAS30_APPDATA!\cache\pip"
 
 cls
 echo ============================================================
-echo               LuaS30 IDE 1.0.1 VS Code-style Studio
+echo               LuaS30 IDE !APP_VERSION! VS Code-style Studio
 echo ============================================================
 echo AppData : !LUAS30_APPDATA!
 echo Projects: !LUAS30_PROJECTS!
