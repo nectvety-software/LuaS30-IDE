@@ -597,18 +597,19 @@ reused from the Qt resource, so nothing is bundled). The page gets:
   paths and blocked names (`.env`, `.git`, …). The result reports per-file errors,
   and the explorer/asset views refresh after a successful batch.
 
-### ChatAI specialization: `scope=engine`, the SKILLS system, and the `problems` tool
+### ChatAI specialization: project confinement, the SKILLS system, and the `problems` tool
 
 The agent protocol (`TOOL_NAMES`) exposes `read | grep | glob | ui_design | asset |
-skill | problems`. A separate `engine` tool used to duplicate read/grep/glob on another root;
-it was merged into an argument: add `"scope":"engine"` to any of the three read
-tools to open the IDE installation itself — only `templates/`, `sdk/`, `engine/`,
-`compat/`, `doc/ai/` and `extensions/`. Legacy `{"tool":"engine","args":{"op":…}}`
-calls are normalized by the parser, so an old-model answer still works. The real
-Lua→C boundary is `templates/basic/src/engine.lua` (thin wrapper) over the
-`luaL_Reg funcs[]` table loaded by `luas30_bridge_open` in
-`engine/src/runtime_bridge.c` — a function absent there does not exist, and the
-system prompt forces verification instead of invented love2d/mobile-Lua APIs.
+skill | problems`. The agent is **confined to the currently open project**: every
+read/grep/glob path is resolved relative to the project root and stays inside it, and
+there is no longer any way to read or edit the LuaS30 IDE's own installation/source
+tree. The old separate `engine` tool (and its `"scope":"engine"` escape hatch that
+let the agent open `templates/`, `sdk/`, `engine/`, `compat/`, `doc/ai/` and
+`extensions/`) has been **removed**: `args.scope` is stripped from every call, and a
+legacy `{"tool":"engine","args":{"op":…}}` answer from an old model is downgraded by
+the parser into a plain project-scoped `read`/`grep`/`glob`. To learn which `engine.*`
+APIs are real, the agent reads the project's own `src/engine.lua` (copied into every
+new project from the template) or loads a curated skill — never the IDE's C core.
 
 Skills (Cline-style, on-demand): `SkillService`
 (`app/services/skill_service.py`) discovers procedure documents with YAML-ish
@@ -624,13 +625,14 @@ Only the INDEX (name + description + source) goes into every system prompt as
 `<agent_skills>`; the full text is fetched with
 `{"tool":"skill","args":{"op":"read","name":"…"}}`. This removed the old
 per-turn duplication where every extension `SKILLS.md` was injected in full AND
-re-readable through the engine tool. Four starter skills ship with the IDE:
-`engine-api-check`, `vxp-build-run`, `s30plus-ui-design`, `problems-autofix`.
-`/skills` in the chat composer lists what is discoverable. Project skills win
-name collisions over engine ones. Multiple `luas30-tool` blocks in one answer
-now run sequentially (all results return before the conversation continues)
-instead of only the first one. Always-on law documents (`SKILLS.md`, `SKILL.md`,
-`PROMPT.md` at project/engine roots) are unchanged and still injected in full.
+re-readable through the engine tool. Three starter skills ship with the IDE:
+`vxp-build-run`, `s30plus-ui-design`, `problems-autofix` (the old `engine-api-check`
+skill was deleted once IDE-internal reading was removed). `/skills` in the chat
+composer lists what is discoverable. Project skills win name collisions over IDE
+ones. Multiple `luas30-tool` blocks in one answer now run sequentially (all results
+return before the conversation continues) instead of only the first one. Always-on
+law documents (`SKILLS.md`, `SKILL.md`, `PROMPT.md` at project/engine roots) are
+unchanged and still injected in full.
 
 The `problems` tool (`{"tool":"problems","args":{"op":"list"|"count"}}`) reads
 the IDE's live PROBLEMS panel: severity, project-relative path, line:column,
@@ -655,13 +657,27 @@ removed_lines` passed by `MainWindow._apply_ai_changes` as `files=`), a
 (`setOpenLinks(False)`), and card history entries (`role:"card"`) are filtered
 out of provider request payloads. Validator: `tools/validate_ai_change_card.py`.
 
+After every applied edit batch, `MainWindow._apply_ai_changes` schedules
+`ai_chat.report_errors_after_change()` (via `QTimer.singleShot(700, …)`). That is the
+Antigravity-style error handoff: `AIChatView` pulls the structured PROBLEMS rows
+through `set_problems_rows_provider(lambda: self.bottom.problems._rows())`, keeps
+error-severity rows first, and inserts a `⚠ N lỗi cần sửa` card whose entries are
+clickable `x-luas30://openfile/<pb_id>:<idx>` anchors. `_on_transcript_anchor`
+resolves an anchor and calls `set_open_location_provider` → `MainWindow._ai_open_location`,
+which opens the offending file at its line/column in the editor (reusing the existing
+`open_location` primitive). When errors are present the first one auto-opens so the
+fix lands in front of the user, matching the problems → analyze → edit → verify loop.
+Problem card history entries use `role:"problems"` and are also excluded from provider
+payloads. Validator: `tools/validate_ai_skills.py` (section 7).
+
 Models that ignore the fenced JSON protocol (Gemini/Ling-style) often emit
 native XML calls — `<tool_call=read>` or a bare open tag with
 `<arg_key>/<arg_value>` pairs. `parse_agent_response` translates those too
 (`_xml_tool_calls`/`_xml_to_actions` in `ai_agent_protocol.py`): aliases
 (`read_file`, `search_files`, …), nameless calls inferred from their args
 (`path`+`start_line` → read, `pattern` → grep/glob, `op` → skill/problems/…),
-legacy `engine` calls normalized to `scope=engine`, and `write_file`/`edit_file`
+legacy `engine` calls downgraded to project-scoped `read`/`grep`/`glob` (with any
+`scope` stripped), and `write_file`/`edit_file`
 turned into `CodeEditAction`s so edits still flow through the auto-apply
 pipeline. Source-valued keys (`content`, `find`, `replace`) keep every byte;
 XML blocks are stripped from the visible transcript text. Fenced JSON wins on

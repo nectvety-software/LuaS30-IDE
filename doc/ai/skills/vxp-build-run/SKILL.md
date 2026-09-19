@@ -37,4 +37,5 @@ bạn vừa sửa code và cần bằng chứng rằng dự án vẫn chạy đ�
 
 - Cùng một lỗi build 2 lần với cùng một bản sửa → DỪNG, đọc tệp nguồn thật
   bằng read (đừng sửa mù), rồi mới thử lại.
-- Lỗi "missing symbol" → quay lại skill `engine-api-check` bước 1.
+- Lỗi "missing symbol" gọi hàm `engine.*` → `grep`/`read` tệp `src/engine.lua`
+  của CHÍNH dự án để đối chiếu tên hàm thật; hàm không có ở đó thì không tồn tại.

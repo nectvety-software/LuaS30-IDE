@@ -795,12 +795,7 @@ files are backed up under:
 
 before atomic replacement.
 
-<<<<<<< HEAD
 ## Ghi công
-
-LuaS30 IDE được dựng trên nền **rất nhiều** dự án mã nguồn mở và công cụ của
-người khác. Vì dùng nhiều nguồn như vậy, mục này **ghi công** các thành phần đó
-và chỉ rõ mỗi thứ đến từ đâu — thay vì tuyên bố bản quyền cho toàn bộ sản phẩm.
 
 | Thành phần | Nguồn / tác giả | Giấy phép | Vai trò trong LuaS30 |
 |---|---|---|---|
@@ -820,15 +815,6 @@ Mỗi thành phần ở trên **vẫn thuộc giấy phép riêng của nó**; f
 từng thành phần là nguồn có thẩm quyền cuối cùng và phải được giữ nguyên khi phân
 phối lại.
 
-Phần mã **do dự án tự viết** — LuaS30 Studio, LuaS30 Native SDK/API (`ls30_*`),
-build tooling, template, tài liệu — mang thông báo
-
-> © Qeafivels All rights reserved. · <https://qeafivels.com/>
-
-và tuân theo Thỏa thuận cấp phép người dùng (EULA) trong [`LICENSE`](LICENSE).
-Thông báo này **không** mở rộng lên các thành phần bên thứ ba kể trên: với mỗi
-thành phần đó, giấy phép gốc của nó là quyết định.
-
 Chi tiết pháp lý và ghi công đầy đủ:
 
 - [`doc/legal/THIRD_PARTY_NOTICES.md`](doc/legal/THIRD_PARTY_NOTICES.md)
@@ -838,6 +824,3 @@ Chi tiết pháp lý và ghi công đầy đủ:
 
 Trong ứng dụng, xem **About → Credits** và **About → Environment** để biết phiên
 bản thư viện thực sự đang chạy.
-
-=======
->>>>>>> 39056b4db73e48e5cf3d3262e3aedfda3b6b9cd9

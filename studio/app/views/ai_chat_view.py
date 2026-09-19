@@ -200,6 +200,9 @@ class AIChatView(QWidget):
         self._shell_runner: Callable | None = None
         self._shell_stopper: Callable | None = None
         self._problems_provider: Callable | None = None
+        # Kiểu Antigravity: bảng PROBLEMS cấu trúc + khả năng nhảy tới file:lỗi.
+        self._problems_rows_provider: Callable | None = None
+        self._open_location_provider: Callable | None = None
         self._worker: AIRequestThread | None = None
         self._retired_workers: list[AIRequestThread] = []
         self._agent_active = False
@@ -212,6 +215,9 @@ class AIChatView(QWidget):
         # Hiệu ứng suy luận: mỗi khối "Đã chạy N công cụ" là một bước thu gọn được.
         self._step_blocks: dict[str, dict] = {}
         self._step_seq = 0
+        # Thẻ "lỗi cần sửa" kiểu Antigravity: mỗi mục bấm được để mở đúng file:dòng.
+        self._problem_blocks: dict[str, dict] = {}
+        self._problem_seq = 0
         # Braille spinner (U+280B..U+2814) dựng bằng code điểm để tránh lỗi font/encoding.
         self._think_frames = tuple(chr(c) for c in range(0x280B, 0x2815))
         self._think_index = 0
@@ -736,6 +742,15 @@ class AIChatView(QWidget):
                     self.transcript.setTextCursor(cursor)
                     visible += 1
                 continue
+            if role == "problems":
+                pb_id = str(item.get("pb_id") or "")
+                if pb_id in self._problem_blocks:
+                    cursor = self.transcript.textCursor()
+                    cursor.movePosition(cursor.MoveOperation.End)
+                    cursor.insertHtml(self._problem_card_html(pb_id))
+                    self.transcript.setTextCursor(cursor)
+                    visible += 1
+                continue
             if item.get("_internal"):
                 continue
             if role not in {"user", "assistant"}:
@@ -809,6 +824,8 @@ class AIChatView(QWidget):
         self._change_cards.clear()
         self._step_blocks.clear()
         self._step_seq = 0
+        self._problem_blocks.clear()
+        self._problem_seq = 0
         self.status_message.emit("Started new ChatAI session")
 
     def clear_chat(self) -> None:
@@ -940,6 +957,14 @@ class AIChatView(QWidget):
 
     def set_problems_provider(self, callback: Callable) -> None:
         self._problems_provider = callback
+
+    def set_problems_rows_provider(self, callback: Callable) -> None:
+        """Nguồn trả về danh sách (severity, path, line, column, message) thô."""
+        self._problems_rows_provider = callback
+
+    def set_open_location_provider(self, callback: Callable) -> None:
+        """Hàm nối tới main_window.open_location(path, line, column) — kiểu Antigravity."""
+        self._open_location_provider = callback
 
     def _active_editor(self):
         if not self._active_editor_provider:
@@ -1092,8 +1117,9 @@ class AIChatView(QWidget):
                 "/rename <name> - rename the current session\n"
                 "/skills - list available agent skills\n"
                 "/help - show these commands\n\n"
-                "Agent tools: read, grep, glob (add \"scope\":\"engine\" to read the "
-                "IDE's MRE core), skill (load on-demand procedure documents), "
+                "Agent tools: read, grep, glob (all confined to the OPEN project "
+                "only — the agent never reads the LuaS30 IDE's own source), skill "
+                "(load on-demand procedure documents), "
                 "problems (read the live PROBLEMS panel), ui_design, asset, "
                 "edit/write through CODE CHANGES (auto-applied in Edit automatically / "
                 "Full access), and shell according to the access mode.",
@@ -1122,6 +1148,20 @@ class AIChatView(QWidget):
             if step is not None:
                 step["expanded"] = not bool(step.get("expanded"))
                 self._render_history()
+        elif kind == "openfile":
+            pb_id, _, idx = card_id.partition(":")
+            block = self._problem_blocks.get(pb_id) or {}
+            rows = block.get("rows") or []
+            try:
+                row = rows[int(idx)]
+            except (ValueError, IndexError):
+                return
+            if self._open_location_provider is not None:
+                _sev, path, line, column, _msg = row
+                try:
+                    self._open_location_provider(str(path), int(line or 1), int(column or 1))
+                except Exception:
+                    pass
 
     def _change_card_html(self, card_id: str) -> str:
         card = self._change_cards.get(card_id) or {}
@@ -1286,9 +1326,11 @@ class AIChatView(QWidget):
             "You are LuaS30 Studio AI Workbench, a codebase-aware engineering agent "
             "specialised in Lua 5.1 programming for Nokia S30+ MRE .vxp projects running "
             "on the bundled VXPEngine (240x320 screen, project main.lua + conf.lua + "
-            "src/engine.lua loaded from the IDE templates). Before editing engine-facing "
-            "code, verify the real API with read/grep/glob using args.scope=\"engine\" "
-            "instead of assuming mobile-Lua or love2d functions exist. The context lists "
+            "src/engine.lua loaded from the IDE templates). Work ONLY inside the "
+            "currently open project: read and edit its files, and never try to open "
+            "the LuaS30 IDE's own installation/source tree. Rely on the project files, "
+            "the context bundle and the PROBLEMS panel rather than assuming functions "
+            "from other mobile-Lua platforms exist. The context lists "
             "installed extensions and an <agent_skills> index; when a skill fits the task, "
             "load its full text with the skill tool and follow it. "
             "Follow instruction documents named SKILLS.md, SKILL.md and PROMPT.md when present. "
@@ -1737,6 +1779,10 @@ class AIChatView(QWidget):
             action.reason or result.splitlines()[0][:160],
             tone,
         )
+        if tool == "problems" and tone == "success":
+            # Antigravity-style: biến bảng PROBLEMS thành thẻ lỗi bấm-để-mở trong
+            # transcript (không auto-mở khi agent chỉ đang tự kiểm tra giữa lượt).
+            self._insert_problem_card(self._error_rows())
         self._history.append(
             {
                 "role": "user",
@@ -1766,6 +1812,101 @@ class AIChatView(QWidget):
             return f"Unsupported problems op '{op}'. Dùng: list (mặc định), count."
         text = str(self._problems_provider(op=op) or "").strip()
         return text if text else "PROBLEMS: sạch — không còn lỗi nào được ghi nhận."
+
+    # Số mục lỗi tối đa hiển thị trên một thẻ "cần sửa".
+    PROBLEM_CARD_LIMIT = 12
+
+    def _error_rows(self) -> list[tuple]:
+        """Các mục PROBLEMS cấu trúc; ưu tiên severity=='error', nếu không có
+        lỗi thì trả mọi cảnh báo để thẻ vẫn hiển thị được."""
+        if self._problems_rows_provider is None:
+            return []
+        try:
+            rows = [tuple(r) for r in (self._problems_rows_provider() or [])]
+        except Exception:
+            return []
+        errors = [r for r in rows if str(r[0]).lower() == "error"]
+        return errors if errors else rows
+
+    def _rel_shown(self, path) -> str:
+        try:
+            p = Path(str(path))
+            if self.project_root:
+                return p.relative_to(self.project_root).as_posix()
+        except (ValueError, OSError):
+            pass
+        return Path(str(path)).name
+
+    def _insert_problem_card(self, rows: list[tuple], *, auto_open: bool = False) -> str:
+        """Chèn thẻ 'N lỗi cần sửa' với MỖI dòng là link mở đúng file:dòng.
+
+        Antigravity khi phát hiện lỗi thì nhảy thẳng tới chỗ cần sửa; ở đây thẻ
+        hiện trong transcript và mỗi mục bấm được qua `_open_location_provider`.
+        `auto_open=True` (sau khi áp code) sẽ mở ngay lỗi đầu tiên để người dùng
+        thấy tại sao agent còn việc phải làm.
+        """
+        if not rows:
+            return ""
+        self._problem_seq += 1
+        pb_id = f"p{self._problem_seq}"
+        self._problem_blocks[pb_id] = {"rows": [tuple(r) for r in rows[: self.PROBLEM_CARD_LIMIT]]}
+        self._history.append({"role": "problems", "pb_id": pb_id, "_internal": True})
+        self.start_frame.setVisible(False)
+        self.transcript.setVisible(True)
+        cursor = self.transcript.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertHtml(self._problem_card_html(pb_id))
+        self.transcript.setTextCursor(cursor)
+        self.transcript.ensureCursorVisible()
+        if auto_open and self._open_location_provider is not None:
+            sev, path, line, column, message = rows[0]
+            try:
+                self._open_location_provider(str(path), int(line or 1), int(column or 1))
+            except Exception:
+                pass
+        return pb_id
+
+    def _problem_card_html(self, pb_id: str) -> str:
+        block = self._problem_blocks.get(pb_id) or {}
+        rows = block.get("rows") or []
+        if not rows:
+            return ""
+        head = (
+            f'<div style="margin:8px 0 2px 0;">'
+            f'<span style="color:{palette.RED};">⚠ {len(rows)} lỗi cần sửa</span>'
+            f'<span style="color:{palette.TEXT_4};"> — bấm để mở tệp</span></div>'
+        )
+        body = []
+        for idx, row in enumerate(rows):
+            _sev, path, line, _column, message = row
+            rel = html.escape(self._rel_shown(path))
+            target = html.escape(str(message or "").strip()[:140])
+            body.append(
+                "<tr>"
+                f'<td><a href="x-luas30://openfile/{pb_id}:{idx}" '
+                f'style="color:{palette.ACCENT_HOVER};text-decoration:none;">'
+                f"{rel}:{html.escape(str(line or 1))}</a></td>"
+                f'<td style="color:{palette.TEXT_3};"> {target}</td>'
+                "</tr>"
+            )
+        table = (
+            '<table width="100%" cellspacing="0" cellpadding="2">' + "".join(body) + "</table>"
+        )
+        return head + table + "<br>"
+
+    def report_errors_after_change(self) -> bool:
+        """main_window gọi sau khi áp code: thẻ lỗi + MỞ NGAY tệp đầu cần sửa.
+
+        Trả `True` nếu còn lỗi (đã hiện thẻ). Đây là hành vi kiểu Antigravity —
+        hết lượt sửa mà vẫn còn diagnostic thìIDE nhảy tới chỗ hỏng để người dùng
+        (hoặc agent ở lượt tiếp) thấy ngay.
+        """
+        rows = self._error_rows()
+        if not rows:
+            return False
+        self._insert_problem_card(rows, auto_open=True)
+        self._persist_session()
+        return True
 
     def _offer_shell(self, action: ShellAction) -> None:
         if self._cancel_requested:

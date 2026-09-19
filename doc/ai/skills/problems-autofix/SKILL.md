@@ -16,8 +16,10 @@ bạn vừa áp dụng code và muốn tự kiểm chứng không còn chẩn đ
 2. **Nhóm theo tệp**: nhiều lỗi cùng một tệp thường chung nguyên nhân
    (thiếu `end`, khai báo sai, gọi hàm engine không tồn tại).
 3. **Đọc ngữ cảnh**: dùng `read` cho cả tệp nếu snippet chưa đủ kết luận.
-   Nghi ngờ API engine → grep `runtime_bridge.c` với `args.scope="engine"`
-   (xem skill `engine-api-check`) trước khi đổi tên hàm.
+   Nghi ngờ một hàm `engine.*` không tồn tại → `grep`/`read` tệp `src/engine.lua`
+   của CHÍNH dự án (bản wrapper Lua nằm trong project) để đối chiếu; nếu tên
+   hàm không có ở đó thì coi như không tồn tại. Agent không đọc mã nguồn cài
+   đặt của IDE, nên đừng tìm đường dẫn ra ngoài thư mục dự án.
 4. **Sửa bằng `luas30-edit`**: mỗi lỗi một edit tối thiểu, đường dẫn tương
    đối dự án. Ở chế độ mặc định **Edit automatically**, IDE áp mã thẳng vào
    tệp (có backup trong `.luas30/ai-backups`) rồi tự tiếp tục lượt cho bạn —

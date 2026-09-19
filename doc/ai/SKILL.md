@@ -895,18 +895,19 @@ ChatAI trong Studio làm việc chuyên cho **Lua 5.1 trên Nokia S30+ MRE**, ch
 trên VXPEngine 240x320 — không phải Love2D, không phải Android, không phải
 Lua 5.3/5.4. Quy tắc bắt buộc:
 
-1. **Chỉ dùng API có thật.** Trước khi sửa code chạm engine, đọc lõi bằng tool
-   `engine` (khối `luas30-tool`, op `read`/`grep`/`glob`/`list`, đường dẫn tương
-   đối IDE-root, chỉ các thư mục `templates`, `sdk`, `engine`, `compat`,
-   `doc/ai`, `extensions`). Nguồn sự thật:
-   - `templates/basic/src/engine.lua` — wrapper Lua mỏng quanh bảng global
-     `engine`; đây là API mức dự án mà `main.lua`/`src/` thật sự gọi.
-   - `engine/src/runtime_lua.c` — chỗ đăng ký bảng global `engine` (C→Lua);
-     mọi hàm `engine.*` có thật đều được ghi danh tại đây, và hàm nào không xuất
-     hiện ở đó thì **không tồn tại** để gọi.
-   - `sdk/luas30/abi/symbols.json` — bảng ký hiệu MRE ABI mà runtime ánh xạ tới.
-   - `compat/devices/` — hồ sơ thiết bị S30+ đã kiểm chứng.
-   Bản đồ các tệp này luôn có trong `<engine_core>` của system prompt.
+1. **Chỉ dùng API có thật, và chỉ đọc TRONG project đang mở.** Agent không còn
+   quyền mở mã nguồn cài đặt của chính LuaS30 IDE (đã bỏ hẳn tool `engine` và mọi
+   phạm vi đọc engine). Mọi đường dẫn `read`/`grep`/`glob` đều tương đối so với
+   gốc project đang mở và phải nằm trong đó. Nguồn sự thật mà agent THẬT SỰ đọc
+   được:
+   - `src/engine.lua` trong project — wrapper Lua mỏng quanh bảng global `engine`;
+     đây chính là API mức dự án mà `main.lua`/`src/` gọi, và nó là một phần của
+     project nên đọc bình thường.
+   - Mã nguồn `.lua` của chính project (`main.lua`, `src/`, module đã `require`).
+   Khi cần biết một hàm `engine.*` có tồn tại không, hãy mở `src/engine.lua` của
+   project và `grep` trong đó; nếu hàm không xuất hiện thì **không tồn tại** để
+   gọi. Muốn hiểu sâu hơn ABI/runtime thì nạp skill được liệt kê trong
+   `<agent_skills>` (tool `skill`, op `read`) — đừng cố lần vào thư mục cài IDE.
 2. **Cấu trúc dự án chuẩn**: `main.lua` (điểm vào) + `conf.lua` (cấu hình
    VXPEngine) + `src/` (module riêng, `require` bằng dấu chấm `/` theo
    project.json) + `project.json` (manifest build .vxp). Giữ tương thích

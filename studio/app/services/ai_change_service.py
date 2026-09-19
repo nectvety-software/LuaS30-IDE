@@ -22,6 +22,16 @@ BLOCKED_NAMES = {
 }
 
 
+class EditMatchError(ValueError):
+    """Nội dung `find` của một edit không khớp tệp — KHÁC với lỗi bảo mật đường dẫn.
+
+    Tách thành type riêng để `prepare()` bỏ qua ĐÚNG edit khớp hỏng mà vẫn áp các
+    edit còn lại (đặc biệt là tệp MỚI tạo bằng `content`). Trước đây một `find`
+    lệch whitespace thôi cũng làm hỏng CẢ lô, nên "thêm code vào project" thất
+    bại toàn bộ dù ý định tạo tệp mới là hợp lệ.
+    """
+
+
 @dataclass
 class PreparedChange:
     relative_path: str
@@ -56,6 +66,7 @@ class PreparedChangeSet:
     project_root: Path
     changes: list[PreparedChange] = field(default_factory=list)
     source: str = "ChatAI"
+    skipped: list[str] = field(default_factory=list)
 
     @property
     def changed_files(self) -> int:
@@ -70,10 +81,13 @@ class PreparedChangeSet:
         return sum(item.removed_lines for item in self.changes)
 
     def summary(self) -> str:
-        return (
+        text = (
             f"{self.changed_files} file(s) · +{self.added_lines} "
             f"-{self.removed_lines}"
         )
+        if self.skipped:
+            text += f" · {len(self.skipped)} edit(s) skipped"
+        return text
 
 
 def _line_stats(before: str, after: str) -> tuple[int, int]:
@@ -146,23 +160,57 @@ class AIChangeService:
             raise ValueError(f"Cannot read AI edit target: {path}") from exc
 
     @staticmethod
-    def _apply_action(before: str, action: CodeEditAction) -> str:
+    def _flexible_span(before: str, find: str) -> tuple[int, int] | None:
+        """Tìm khối `find` trong `before` bỏ qua thụt lề/khoảng trắng từng dòng.
+
+        Model hay copy lại một đoạn rồi dán vào `find` nhưng lệch chỗ đầu dòng
+        (tab vs space, thụt lề tự động) khiến so khớp nguyên văn thất bại. So
+        từng dòng sau `.strip()` cho phép "thêm code" áp được dù indent khác.
+        Chỉ nhận khi khớp ĐÚNG MỘT vị trí để không thay nhầm chỗ.
+        """
+        find_lines = find.rstrip("\n").splitlines()
+        if not find_lines:
+            return None
+        target = [ln.strip() for ln in find_lines]
+        blines = before.splitlines(keepends=True)
+        if len(blines) < len(target):
+            return None
+        matches: list[tuple[int, int]] = []
+        for start in range(len(blines) - len(target) + 1):
+            window = blines[start:start + len(target)]
+            if all(w.strip() == t for w, t in zip(window, target)):
+                offset = sum(len(blines[i]) for i in range(start))
+                # Kết thúc ở HẾT nội dung dòng cuối, KHÔNG ăn ký tự xuống dòng của
+                # nó — nếu không, thay thế sẽ dán liền dòng kế tiếp (vd "end").
+                last = window[-1]
+                content_len = len(last) - (len(last) - len(last.rstrip("\r\n")))
+                span_end = offset + sum(len(w) for w in window[:-1]) + content_len
+                matches.append((offset, span_end))
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def _apply_action(self, before: str, action: CodeEditAction) -> str:
         if action.content is not None:
             return action.content.replace("\r\n", "\n").replace("\r", "\n")
 
         old = action.find
         new = action.replace
         if old is None:
-            raise ValueError(f"Edit for {action.path} has neither content nor find/replace.")
+            raise EditMatchError(f"Edit for {action.path} has neither content nor find/replace.")
         count = before.count(old)
-        if count == 0:
-            raise ValueError(f"Search text was not found in {action.path}.")
-        if count > 1 and not action.replace_all:
-            raise ValueError(
+        if count == 1 or (count > 1 and action.replace_all):
+            return before.replace(old, new or "", -1 if action.replace_all else 1)
+        if count > 1:
+            raise EditMatchError(
                 f"Search text appears {count} times in {action.path}; "
                 "the AI must provide a more specific match or replace_all=true."
             )
-        return before.replace(old, new or "", -1 if action.replace_all else 1)
+        span = self._flexible_span(before, old)
+        if span is not None:
+            start, end = span
+            return before[:start] + (new or "") + before[end:]
+        raise EditMatchError(f"Search text was not found in {action.path}.")
 
     def prepare(
         self,
@@ -185,7 +233,10 @@ class AIChangeService:
 
         by_path: dict[Path, PreparedChange] = {}
         order: list[Path] = []
+        skipped: list[str] = []
         for action in actions:
+            # Lỗi ĐƯỜNG DẪN (ngoài project, tệp bảo mật) vẫn fatal: không bao giờ
+            # viết ra ngoài project. Chỉ lỗi KHỚP NỘI DUNG mới được bỏ qua lẻ tẻ.
             relative, target = self._safe_target(root, action.path)
             if target not in by_path:
                 before = overrides.get(target, self._read_text(target))
@@ -200,7 +251,11 @@ class AIChangeService:
                 order.append(target)
 
             item = by_path[target]
-            item.after = self._apply_action(item.after, action)
+            try:
+                item.after = self._apply_action(item.after, action)
+            except EditMatchError as exc:
+                skipped.append(str(exc))
+                continue
             if action.reason:
                 item.reason = action.reason
 
@@ -212,9 +267,13 @@ class AIChangeService:
                 changes.append(item)
 
         if not changes:
-            raise ValueError("The AI edit proposal produced no code changes.")
+            detail = "; ".join(dict.fromkeys(skipped))
+            raise ValueError(
+                "The AI edit proposal produced no code changes."
+                + (f" Không áp được: {detail}" if detail else "")
+            )
 
-        self.pending = PreparedChangeSet(root, changes, source=source)
+        self.pending = PreparedChangeSet(root, changes, source=source, skipped=skipped)
         return self.pending
 
     def reject(self) -> None:

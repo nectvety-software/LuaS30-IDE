@@ -766,6 +766,8 @@ class VxpMainWindow(QWidget):
         self.ai_chat.set_shell_runner(self._run_ai_shell)
         self.ai_chat.set_shell_stopper(self._stop_ai_shell)
         self.ai_chat.set_problems_provider(self._ai_problems_snapshot)
+        self.ai_chat.set_problems_rows_provider(lambda: self.bottom.problems._rows())
+        self.ai_chat.set_open_location_provider(self._ai_open_location)
         self.ai_chat.changes_proposed.connect(self._prepare_ai_changes)
         self.ai_chat.review_changes_requested.connect(self._review_ai_changes)
         self.ai_chat.apply_changes_requested.connect(self._apply_ai_changes)
@@ -2009,6 +2011,17 @@ class VxpMainWindow(QWidget):
         if editor is not None:
             editor.goto_line(line, column)
 
+    def _ai_open_location(self, path, line: int, column: int = 1) -> None:
+        """Chat AI bấm một lỗi trong thẻ 'cần sửa' -> mở đúng tệp:dòng (Antigravity).
+
+        Chat trả về đường dẫn tuyệt đối từ bảng PROBLEMS; suy lại theo gốc dự án
+        nếu vì lý do nào đó nó là tương đối, rồi nhảy tới vị trí lỗi.
+        """
+        p = Path(str(path))
+        if not p.is_absolute() and self.session.root:
+            p = self.session.root / p
+        self.open_location(p, int(line or 1), int(column or 1))
+
     def _show_find(self, replace: bool) -> None:
         editor = self.tabs.current_editor()
         if editor is None:
@@ -2178,6 +2191,9 @@ class VxpMainWindow(QWidget):
         )
         self._ai_change_set = None
         self.show_status(f"AI code applied: {len(paths)} file(s)")
+        # Antigravity-style: sau khi áp, chờ diagnostic của tệp vừa đổi ổn định
+        # rồi bật thẻ "lỗi cần sửa" và mở đúng tệp đầu tiên còn lỗi.
+        QTimer.singleShot(700, lambda: self.ai_chat.report_errors_after_change())
 
     def _reject_ai_changes(self) -> None:
         if not self._ai_change_set:

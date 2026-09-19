@@ -48,7 +48,7 @@ _XML_TOOL_ALIASES = {
     "write": "write", "write_file": "write", "create_file": "write",
     "edit": "write", "edit_file": "write", "replace_in_file": "write",
     "ui_design": "ui_design", "asset": "asset",
-    "skill": "skill", "problems": "problems", "engine": "engine",
+    "skill": "skill", "problems": "problems",
 }
 
 
@@ -87,7 +87,7 @@ def _xml_infer_tool(args: dict) -> str:
     keys = set(args)
     if {"path", "content"} <= keys or (keys & {"find", "replace"}) and "path" in keys:
         return "write"
-    if keys & {"start_line", "end_line", "scope"} and "path" in keys:
+    if keys & {"start_line", "end_line"} and "path" in keys:
         return "read"
     if "pattern" in keys:
         return "glob" if any(ch in str(args["pattern"]) for ch in "*?[") and "include" not in keys else "grep"
@@ -111,8 +111,7 @@ def _xml_to_actions(name: str, args: dict) -> tuple[list, list]:
     edits: list[CodeEditAction] = []
     reason = str(args.pop("reason", "") or "").strip()
     tool = _XML_TOOL_ALIASES.get(name, "") or _xml_infer_tool(args)
-    if tool == "engine":
-        tool, args = _normalise_engine_call(args)
+    args.pop("scope", None)
     if tool == "write":
         path = str(args.get("path") or "").strip()
         content = args.get("content")
@@ -144,21 +143,22 @@ DESIGN_TOOL_NAMES = ("ui_design", "asset")
 WORKBENCH_TOOL_NAMES = ("skill", "problems")
 TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + WORKBENCH_TOOL_NAMES
 
-# Tool "engine" cũ ĐÃ BỊ GỘP vào read/grep/glob bằng args.scope="engine" —
-# hai bộ tool cùng đọc tệp chỉ khác gốc là trùng lặp thuần tuý. Model vẫn có
-# thể phát lời gọi kiểu cũ; _normalise_engine_call dịch chúng sang dạng mới.
+# Agent KHÔNG còn quyền đọc mã nguồn của chính LuaS30 IDE (đã bỏ scope="engine").
+# Model cũ vẫn có thể phát `{"tool":"engine","args":{"op":...}}`; lời gọi đó được
+# HẠ CẤP thành read/grep/glob phục vụ TRONG project đang mở — cùng op, nhưng gốc
+# là project chứ không phải thư mục cài IDE, nên không lộ mã nguồn của IDE.
 _ENGINE_OP_TO_TOOL = {"read": "read", "grep": "grep", "glob": "glob", "list": "glob"}
 
 
-def _normalise_engine_call(args: dict) -> tuple[str, dict]:
-    """`{"tool":"engine","args":{"op":...}}` -> (tên tool mới, args có scope)."""
+def _downgrade_engine_call(args: dict) -> tuple[str, dict]:
+    """`tool=="engine"` -> (read/grep/glob project, args đã bỏ mọi scope)."""
     value = dict(args or {})
-    op = str(value.pop("op", None) or "read").strip().lower()
+    value.pop("scope", None)
+    op = str(value.pop("op", None) or ("glob" if "pattern" in value else "read")).strip().lower()
     tool = _ENGINE_OP_TO_TOOL.get(op, "read")
     if op == "list":
         scope_path = str(value.pop("path", "") or "").strip().strip("/")
         value.setdefault("pattern", f"{scope_path}/*" if scope_path else "**/*")
-    value["scope"] = "engine"
     return tool, value
 
 
@@ -392,7 +392,7 @@ def parse_agent_response(
             if not isinstance(args, dict):
                 args = {key: value for key, value in item.items() if key not in {"tool", "reason"}}
             if tool == "engine":
-                tool, args = _normalise_engine_call(args)
+                tool, args = _downgrade_engine_call(args)
             if tool not in TOOL_NAMES:
                 continue
             tools.append(
@@ -574,29 +574,21 @@ def agent_protocol_prompt(
             else
             "Code editing is disabled. Do not emit luas30-edit blocks."
         )
-    # Tool "engine" cũ giờ là args.scope="engine" của read/grep/glob — một lời
-    # gọi mô tả, không phải một bộ máy mới.
-    engine_scope_note = (
-        'Engine scope: add "scope":"engine" to read/grep/glob to open the LuaS30 IDE '
-        "itself — the MRE core that a project cannot see: the thin Lua wrapper "
-        "templates/basic/src/engine.lua, the luaL_Reg funcs[] table registered by "
-        "luas30_bridge_open in engine/src/runtime_bridge.c (a function absent there "
-        "does not exist), other "
-        "templates, the MRE SDK surface (sdk/luas30: abi/symbols.json, include/ls30), "
-        "device compatibility fixtures (compat/) and doc/ai/. Paths are relative to "
-        "the IDE root and only those folders are readable. Never invent engine "
-        'functions — verify with scope=engine grep/read first. Example:\n'
-        "```luas30-tool\n"
-        '{"tool":"read","args":{"path":"templates/basic/src/engine.lua","start_line":1,'
-        '"end_line":200,"scope":"engine"},"reason":"Learn the real Engine API"}\n'
-        "```"
+    # Agent chỉ làm việc TRONG project đang mở: không còn đường nào đọc mã nguồn
+    # của chính LuaS30 IDE (scope="engine"/tool `engine` đã bỏ hẳn).
+    project_scope_note = (
+        "Project scope (STRICT): every read/grep/glob path is relative to the OPEN "
+        "project root and stays inside it. You cannot — and must not try to — read or "
+        "edit the LuaS30 IDE's own installation/source tree (no scope=engine, no "
+        "outside paths, no '..'). Work only with the project files in context; if a "
+        "needed symbol is not in the project, say so instead of opening IDE internals."
     )
     skills_note = (
         "Skill tool: <agent_skills> in the context lists on-demand procedure "
-        "documents (project/engine/extension skills). When one fits the task, load "
+        "documents (project/extension skills). When one fits the task, load "
         "its full text and follow it:\n"
         "```luas30-tool\n"
-        '{"tool":"skill","args":{"op":"read","name":"engine-api-check"},'
+        '{"tool":"skill","args":{"op":"read","name":"problems-autofix"},'
         '"reason":"Load the procedure"}\n'
         "```\n"
         "op list re-discovers skills; op read needs args.name.\n"
@@ -619,7 +611,7 @@ def agent_protocol_prompt(
         '{"tool":"read","args":{"path":"main.lua","start_line":1,"end_line":220},"reason":"Inspect current implementation"}\n'
         "```\n"
         "Use project-relative paths and never request secrets or .env files.\n"
-        + engine_scope_note + "\n" + skills_note
+        + project_scope_note + "\n" + skills_note
     )
     design_tools = (
         "UI Design and Assets tools let you read this project's interface design and asset "

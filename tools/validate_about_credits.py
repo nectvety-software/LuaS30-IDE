@@ -105,9 +105,9 @@ def check_source() -> None:
     check("THIRD_PARTY_NOTICES.md có bản quyền", COPYRIGHT in notices)
     check("THIRD_PARTY_NOTICES.md có website", WEBSITE in notices)
 
-    # Bản quyền phải có ở cả ba mặt phẳng: trong app (About), ở gốc repo
-    # (LICENSE) và ở README. Thiếu LICENSE thì "All rights reserved" chỉ là một
-    # dòng chữ trong hộp thoại.
+    # Bản quyền + website là thông báo pháp lý, giữ ở HAI mặt phẳng có thẩm quyền:
+    # trong app (About) và ở gốc repo (LICENSE). README chỉ ghi công + trỏ tới
+    # LICENSE — không tuyên bố bản quyền bao trùm (khớp chủ trương "Ghi công").
     license_file = ROOT / "LICENSE"
     check("có file LICENSE ở gốc repo", license_file.is_file())
     if license_file.is_file():
@@ -118,9 +118,9 @@ def check_source() -> None:
               "THIRD_PARTY_NOTICES.md" in text)
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    check("README có bản quyền", COPYRIGHT in readme)
-    check("README có website", WEBSITE in readme)
     check("README trỏ tới LICENSE", "](LICENSE)" in readme)
+    check("README không tuyên bố bản quyền bao trùm",
+          COPYRIGHT not in readme and WEBSITE not in readme)
 
     paths = src[src.find("def _paths_tab"):]
     check("tab Paths có dòng License (project)",

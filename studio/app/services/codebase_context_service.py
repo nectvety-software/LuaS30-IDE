@@ -31,22 +31,6 @@ INSTRUCTION_NAMES = ("SKILLS.md", "SKILL.md", "PROMPT.md")
 INSTRUCTION_FILE_LIMIT = 64000
 INSTRUCTION_TOTAL_BUDGET = 160000
 
-# Bản đồ "lõi Lua MRE" mà một dự án không tự thấy được — đưa thẳng vào mọi
-# system prompt để agent biết chính xác chỗ phải đọc (read/grep/glob với
-# scope="engine") thay vì bịa API của nền tảng di động khác.
-ENGINE_CORE_ENTRIES = (
-    ("templates/basic/src/engine.lua", "wrapper Lua mỏng quanh bảng global `engine` — API mà dự án thật sự gọi"),
-    ("engine/src/runtime_bridge.c", "mảng `luaL_Reg funcs[]` + luas30_bridge_open — mọi hàm engine.* có thật đều đăng ký ở đây (tên global là `engine`, alias `mre`)"),
-    ("templates/basic/main.lua", "điểm vào dự án chuẩn"),
-    ("templates/basic/conf.lua", "cấu hình VXPEngine (màn hình 240x320, tài nguyên)"),
-    ("templates/basic/project.json", "manifest build .vxp"),
-    ("sdk/luas30/abi/symbols.json", "bảng ký hiệu MRE ABI mà runtime ánh xạ tới"),
-    ("sdk/luas30/include/ls30/luas30_sdk.h", "API C của SDK"),
-    ("engine/", "runtime C + linker biên dịch .vxp"),
-    ("compat/devices", "hồ sơ thiết bị S30+ đã kiểm chứng"),
-    ("doc/ai/SKILL.md", "luật agent chính thức"),
-)
-
 
 @dataclass
 class ContextBundle:
@@ -237,33 +221,6 @@ class CodebaseContextService:
                 budget -= len(value)
         return selected
 
-    def engine_core_summary(self) -> str:
-        """Bản đồ ngắn lõi MRE của IDE — đường dẫn THẬT, chỉ liệt kê khi tồn tại,
-        kèm số dòng để agent biết độ lớn trước khi gọi tool `engine` đọc nội dung."""
-        lines = []
-        for rel, note in ENGINE_CORE_ENTRIES:
-            target = self.engine_root / rel
-            if target.is_file():
-                try:
-                    size = len(target.read_bytes().splitlines())
-                except OSError:
-                    size = 0
-                lines.append(f"- {rel} ({size} dòng) — {note}")
-            elif target.is_dir():
-                try:
-                    count = sum(1 for _ in target.iterdir())
-                except OSError:
-                    count = 0
-                lines.append(f"- {rel} ({count} mục) — {note}")
-        if not lines:
-            return ""
-        return (
-            "<engine_core root=\"LuaS30 IDE installation — outside any project\">\n"
-            'Đọc các tệp này bằng read/grep/glob với args.scope="engine" trước khi '
-            "sửa code chạm API engine; tuyệt đối không bịa hàm của nền tảng khác.\n"
-            + "\n".join(lines) + "\n</engine_core>"
-        )
-
     def build(self, project_root: Path | None, question: str, *, active_path: Path | None = None, active_text: str = "") -> ContextBundle:
         project = Path(project_root).resolve() if project_root else None
         tree, tree_count = self.project_tree(project)
@@ -289,9 +246,6 @@ class CodebaseContextService:
         briefing = self.extension_service.agent_briefing()
         if briefing:
             parts.append(briefing)
-        core = self.engine_core_summary()
-        if core:
-            parts.append(core)
         skills = self.skill_service.index_text(project)
         if skills:
             parts.append(skills)

@@ -67,7 +67,7 @@ theo tên tệp tài liệu gốc.
   frontmatter `name`/`description` quét từ `skills/` của project,
   `doc/ai/skills/` của IDE và `skills/` của extension; prompt chỉ mang MỤC LỤC
   `<agent_skills>`, toàn văn nạp theo yêu cầu qua tool `skill`
-  (op list|read) — kèm 4 skill trụ cột `engine-api-check`, `vxp-build-run`,
+  (op list|read) — kèm 3 skill trụ cột `vxp-build-run`,
   `s30plus-ui-design`, `problems-autofix` và lệnh `/skills` trong ô chat. Validator mới
   `tools/validate_ai_skills.py`.
 - Tool `problems` + mặc định "Edit automatically" (Cline Act):
@@ -95,7 +95,8 @@ theo tên tệp tài liệu gốc.
 - Sửa Chat AI "đứng" khi model không theo protocol: `parse_agent_response`
   nay dịch được tool-call XML gốc kiểu Gemini/Ling (`<tool_call=read>` hoặc
   thẻ trần + cặp `arg_key/arg_value`) — alias tên tool, suy đoán tool từ args
-  khi thiếu tên, `engine` cũ → `scope=engine`, và `write_file`/`edit_file`
+  khi thiếu tên, `engine` cũ hạ cấp thành read/grep/glob TRONG project (mọi
+  `scope` bị bỏ), và `write_file`/`edit_file`
   thành `CodeEditAction` nên mã vẫn tự áp thẳng vào dự án như Cline; khối XML
   bị gỡ khỏi chữ hiển thị, value mã nguồn giữ nguyên newline, fenced JSON
   được ưu tiên khi trùng lặp. Validator mới
@@ -162,13 +163,16 @@ theo tên tệp tài liệu gốc.
 - AI Agents luôn trả lời bằng tiếng Việt: `_system_prompt` thêm chỉ dẫn BẮT BUỘC
   dịch `visible_text`, `reasoning_summary` và `reason` của tool sang tiếng Việt,
   đồng thời giữ nguyên mã nguồn, tên hàm/biến, đường dẫn và lệnh shell.
-- README: đổi mục "Bản quyền" thành "Ghi công". Vì IDE dùng nhiều nguồn bên thứ
-  ba (Python/PSF, PySide6·Qt LGPLv3, Lua 5.1.5 MIT-style, GNU Arm Toolchain
-  GPLv3+GCC-exception, Unicorn GPLv2, Inno Setup, WiX MS-RL, font Segoe) nên
-  không tuyên bố bản quyền bao trùm; thay bằng bảng liệt kê thư viện + nguồn và
-  thu gọn thông báo `© Qeafivels All rights reserved.` chỉ cho phần mã do dự án
-  tự viết (khớp EULA `LICENSE` mục 5 — giữ nguyên chuỗi để
-  `validate_about_credits.py` vẫn xanh).
+- README: mục "Ghi công" là bảng liệt kê thư viện + nguồn (Python/PSF,
+  PySide6·Qt LGPLv3, Lua 5.1.5 MIT-style, GNU Arm Toolchain GPLv3+GCC-exception,
+  Unicorn GPLv2, Inno Setup, WiX MS-RL, font Segoe) và KHÔNG tuyên bố bản quyền
+  bao trùm. Đã bỏ hẳn câu dẫn "LuaS30 IDE được dựng trên nền rất nhiều dự án…"
+  và dòng thông báo `© Qeafivels All rights reserved. · https://qeafivels.com/`
+  khỏi README; bản quyền/website giờ chỉ còn ở `LICENSE`, hộp thoại About và
+  `doc/legal/THIRD_PARTY_NOTICES.md`. `validate_about_credits.py` cập nhật tương
+  ứng: README chỉ cần trỏ `](LICENSE)` và được CHỐT là không chứa lại chuỗi bản
+  quyền/website. (Đồng thời dọn nốt khối conflict `<<<<<<< HEAD`/`>>>>>>>` bị commit
+  sót từ lần merge `39056b4` — giữ nội dung "Ghi công" phía HEAD.)
 - UI Designer nâng cấp chỉnh sửa theo chuẩn Canva: hoàn tác/đi lại theo từng
   bước (`Ctrl+Z`/`Ctrl+Shift+Z`, tối đa 60 trạng thái, chọn lại đúng các thành
   phần cũ), chọn nhiều bằng khung cao-su/`Shift`+click/`Ctrl+A`, resize 8 tay
@@ -181,6 +185,27 @@ theo tên tệp tài liệu gốc.
   kéo/resize.
 - Sửa resolve màu icon, pipeline build UTF-8 và khôi phục đường dẫn
   toolchain (commits 71e0c25, 0cf75b9).
+- KHOANH VÙNG AI Agent vào ĐÚNG project đang mở: agent không còn đọc/sửa được
+  mã nguồn cài đặt của chính LuaS30 IDE. Đã xoá hẳn tool `engine` và cửa hậu
+  `args.scope="engine"` (cùng `ENGINE_ALLOWED_PREFIXES`, `<engine_core>` trong
+  context, skill `engine-api-check`); `AIReadOnlyToolService` bỏ mọi `scope`,
+  mọi đường dẫn read/grep/glob chỉ resolve theo gốc project và chặn thoát ra
+  ngoài; prompt đổi sang "Project scope (STRICT)". Lời gọi `engine` kiểu cũ
+  được parser hạ cấp thành read/grep/glob project-scoped. Validator:
+  `tools/validate_ai_skills.py` (mục 3–5).
+- Sửa AI Agent không thêm được code vào project: trước đây MỘT thao tác `find`
+  không khớp làm hỏng cả đợt `prepare()`. Nay `AIChangeService` có
+  `EditMatchError` + `_flexible_span` (khớp dòng dung cảm thụt lề/khoảng trắng,
+  chỉ khi khớp duy nhất) và bỏ qua mềm từng edit lỗi (vẫn raise với lỗi đường
+  dẫn/an toàn), ghi "N edit(s) skipped" vào summary — tệp mới vẫn được tạo.
+- Phát hiện lỗi + mở file cần sửa kiểu Antigravity: sau mỗi đợt áp code,
+  `MainWindow` gọi `ai_chat.report_errors_after_change()`; `AIChatView` nối
+  provider dòng PROBLEMS cấu trúc (`set_problems_rows_provider`) +
+  `set_open_location_provider`, dựng thẻ "⚠ N lỗi cần sửa" với mỗi mục là neo
+  `x-luas30://openfile/<id>:<idx>` bấm để mở đúng tệp:dòng:cột qua
+  `open_location`, và tự mở lỗi đầu tiên. Kiểm chứng live: thẻ render, chỉ
+  severity error được ưu tiên, click neo mở đúng tệp. Validator:
+  `tools/validate_ai_skills.py` (mục 7).
 
 
 ## 1.15.0 — AI Workbench v1

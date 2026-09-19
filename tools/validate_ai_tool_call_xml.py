@@ -87,13 +87,14 @@ ppb = parse_agent_response(call("", ("op", "list")))
 check(len(ppb.tool_actions) == 1 and ppb.tool_actions[0].tool == "problems",
       "op list don doc -> problems")
 
-# 4. engine kieu cu trong XML -> read scope=engine.
+# 4. engine kieu cu trong XML -> HA CAP thành read project, KHONG con scope=engine
+#    (agent chi duoc doc codebase cua mo dang mo, khong phai ma nguon cua IDE).
 pe = parse_agent_response(call("=engine",
                                ("op", "read"),
                                ("path", "templates/basic/src/engine.lua")))
 check(len(pe.tool_actions) == 1 and pe.tool_actions[0].tool == "read"
-      and pe.tool_actions[0].args.get("scope") == "engine",
-      "engine XML -> read scope=engine")
+      and "scope" not in pe.tool_actions[0].args,
+      "engine XML -> read project, khong con scope=engine")
 
 # 5. Khong trung lap voi fenced JSON cung noi dung; nhieu khoi XML giu thu tu.
 mix = ('```luas30-tool\n{"tool":"read","args":{"path":"main.lua"},"reason":"x"}\n```\n'

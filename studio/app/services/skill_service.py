@@ -16,8 +16,8 @@ SKILLS.md/SKILL.md/PROMPT.md luôn được nhét vào mọi system prompt:
 Frontmatter tối thiểu:
 
     ---
-    name: engine-api-check
-    description: Kiểm chứng hàm engine.* có thật trước khi sửa code chạm API
+    name: problems-autofix
+    description: Đọc bảng PROBLEMS, phân tích và tự sửa lỗi Lua trong dự án
     ---
 
 Thiếu frontmatter thì lấy tên theo thư mục/mục `# ` đầu tiên và mô tả theo
