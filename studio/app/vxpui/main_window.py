@@ -14,7 +14,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QUrl, QTimer
+from PySide6.QtCore import QDateTime, QEvent, QPoint, QSize, Qt, QUrl, QTimer
 from PySide6.QtGui import QAction, QCursor, QDesktopServices, QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QMenu, QMenuBar,
@@ -129,6 +129,13 @@ class VxpMainWindow(QWidget):
         self._ai_visible = False
         self._vxp_emu_window: VxpEmuWindow | None = None
         self.run_session_dialog: RunSessionDialog | None = None
+        # Chạy thử do Chat AI/`/run` yêu cầu: build + launch VXPEmu screen-only,
+        # chờ khung hình ổn định rồi chụp ảnh khói và báo kết quả về AIChatView.
+        self._ai_run_active = False
+        self._ai_run_reason = ""
+        self._ai_run_started = False
+        self._ai_run_reported = False
+        self._ai_run_attempts = 0
         # Nén bão output build/emu: gom nhiều chunk rồi vẽ MỘT lần mỗi nhịp
         # ~60ms, thay vì repaint cả console + build_log + dialog cho TỪNG chunk
         # (nguyên nhân chính gây lag khi compile in hàng trăm dòng).
@@ -765,6 +772,8 @@ class VxpMainWindow(QWidget):
         self.ai_chat.set_active_editor_provider(self._active_editor_context)
         self.ai_chat.set_shell_runner(self._run_ai_shell)
         self.ai_chat.set_shell_stopper(self._stop_ai_shell)
+        self.ai_chat.set_run_app(self._run_and_capture_app)
+        self.ai_chat.set_run_app_stopper(self._stop_ai_run_app)
         self.ai_chat.set_problems_provider(self._ai_problems_snapshot)
         self.ai_chat.set_problems_rows_provider(lambda: self.bottom.problems._rows())
         self.ai_chat.set_open_location_provider(self._ai_open_location)
@@ -1778,6 +1787,9 @@ class VxpMainWindow(QWidget):
         else:
             self.bottom.console.append(f"[Build] Tác vụ thất bại với mã {exit_code}.")
         self._schedule_workspace_save()
+        # Build thất bại khi đang chạy thử cho Chat AI/`/run`: báo kết quả về chat.
+        if self._ai_run_active and not success:
+            self._report_ai_run(False, f"Biên dịch thất bại (mã {exit_code}). Xem tab Build Log.")
 
     def _project_structure_changed(self, project_path: str) -> None:
         if not project_path:
@@ -1801,11 +1813,18 @@ class VxpMainWindow(QWidget):
             height = int(self._project_meta.get("screen_height") or 320)
             window.set_orientation("landscape" if width > height else "portrait")
             window.attach_process(loaded, pid)
+        # Đang chạy thử cho Chat AI/`/run`: chờ khung hình boot ổn định rồi chụp.
+        if self._ai_run_active and not self._ai_run_started:
+            self._ai_run_started = True
+            QTimer.singleShot(2600, self._ai_capture_and_report)
 
     def _on_vxpemu_stopped(self, code: int) -> None:
         self.vxpemu_panel.process_stopped(code)
         if self._vxp_emu_window is not None and self._vxp_emu_window.running:
             self._vxp_emu_window.process_stopped(code)
+        # Giả lập chết/trước khi kịp chụp: báo thất bại nếu chưa báo.
+        if self._ai_run_active and not self._ai_run_reported:
+            self._report_ai_run(False, "Giả lập dừng trước khi kịp chụp ảnh kiểm tra.")
 
     def _on_emulator_state_label(self, state: str) -> None:
         self.emulator_view.set_state(state)
@@ -2066,6 +2085,78 @@ class VxpMainWindow(QWidget):
 
     def _stop_ai_shell(self) -> bool:
         return self.bottom.terminal.cancel_ai_command()
+
+    # ------------------------------------------------  Chat AI / `/run` smoke test
+    def _run_and_capture_app(self, reason: str = "") -> bool:
+        """Build dự án đang mở + chạy VXPEmu screen-only cho Chat AI / `/run`.
+
+        Trả về True nếu pipeline đã khởi động. Kết quả thật (kèm ảnh chụp khói)
+        được gửi ngược về `AIChatView.on_run_app_finished` qua `_report_ai_run`
+        khi khung hình sẵn sàng hoặc khi build/giả lập lỗi.
+        """
+        if self._ai_run_active or self.runner.is_running:
+            return False
+        project = self.session.root
+        if not project:
+            return False
+        if not self.tabs.save_all():
+            return False
+        self._ai_run_active = True
+        self._ai_run_started = False
+        self._ai_run_reported = False
+        self._ai_run_attempts = 0
+        self._ai_run_reason = str(reason or "")
+        self.bottom.build_log.clear()
+        self._set_console_visible(True)
+        self.bottom.setCurrentWidget(self.bottom.build_log)
+        return bool(self.runner.run(Path(project)))
+
+    def _stop_ai_run_app(self) -> None:
+        if self._ai_run_active and not self._ai_run_reported:
+            self._report_ai_run(False, "Đã dừng chạy thử theo yêu cầu.")
+        self.runner.stop_vxpemu()
+
+    def _ai_run_output_path(self) -> Path:
+        stamp = QDateTime.currentDateTime().toString("yyyyMMdd-HHmmss")
+        base = Path(self.session.root) if self.session.root else Path(self.engine_root)
+        return base / "build" / "smoke" / f"run-{stamp}.png"
+
+    def _ai_capture_and_report(self) -> None:
+        if not self._ai_run_active or self._ai_run_reported:
+            return
+        window = self._vxp_emu_window
+        if window is None or not window.running:
+            self._report_ai_run(False, "Giả lập không hiển thị để chụp ảnh kiểm tra.")
+            return
+        output = self._ai_run_output_path()
+        if window.capture_to_file(output):
+            self._report_ai_run(
+                True,
+                "Đã build và chạy game/app trên VXPEmu; đã chụp ảnh kiểm tra.",
+                str(output),
+            )
+            return
+        self._ai_run_attempts += 1
+        if self._ai_run_attempts >= 8:
+            self._report_ai_run(
+                True,
+                "Game/app đã khởi chạy trên VXPEmu nhưng chưa chụp được ảnh "
+                "(khung hình chưa sẵn sàng).",
+                "",
+            )
+            return
+        QTimer.singleShot(500, self._ai_capture_and_report)
+
+    def _report_ai_run(self, success: bool, message: str, screenshot: str = "") -> None:
+        if self._ai_run_reported:
+            return
+        self._ai_run_active = False
+        self._ai_run_started = False
+        self._ai_run_reported = True
+        self.ai_chat.on_run_app_finished(bool(success), str(message), str(screenshot or ""))
+        if success:
+            # Chạy ngầm: đóng giả lập ngay sau khi đã có bằng chứng ảnh chụp.
+            self.runner.stop_vxpemu()
 
     def _open_editor_text_overrides(self) -> dict[Path, str]:
         values: dict[Path, str] = {}

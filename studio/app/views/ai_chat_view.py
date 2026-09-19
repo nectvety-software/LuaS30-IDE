@@ -40,6 +40,7 @@ ACCESS_MODES = (
 QUICK_ACTIONS = (
     ("Giải thích code", "code", "Giải thích mã nguồn trong tệp đang mở, từng bước ngắn gọn."),
     ("Sửa lỗi", "warning", "Dùng tool problems (op list) đọc bảng PROBLEMS, làm theo skill problems-autofix để phân tích nguyên nhân và sửa thẳng vào dự án, sau đó chạy lại problems để xác nhận sạch lỗi."),
+    ("Chạy thử game/app", "run", "/run"),
     ("Tạo hàm mới", "add", "Tạo một hàm mới trong tệp đang mở với mô tả:"),
     ("Tóm tắt file", "file", "Tóm tắt cấu trúc và chức năng của tệp đang mở."),
     ("Tối ưu code", "spark", "Đề xuất tối ưu hiệu năng và độ rõ cho tệp đang mở:"),
@@ -203,6 +204,12 @@ class AIChatView(QWidget):
         # Kiểu Antigravity: bảng PROBLEMS cấu trúc + khả năng nhảy tới file:lỗi.
         self._problems_rows_provider: Callable | None = None
         self._open_location_provider: Callable | None = None
+        # Chạy thử game/app: build + launch VXPEmu screen-only + chụp ảnh, do
+        # main_window cung cấp (async — kết quả về qua on_run_app_finished).
+        self._run_app: Callable | None = None
+        self._run_app_stopper: Callable | None = None
+        self._awaiting_run_app = False
+        self._run_app_continue_agent = False
         self._worker: AIRequestThread | None = None
         self._retired_workers: list[AIRequestThread] = []
         self._agent_active = False
@@ -955,6 +962,17 @@ class AIChatView(QWidget):
     def set_shell_stopper(self, callback: Callable) -> None:
         self._shell_stopper = callback
 
+    def set_run_app(self, callback: Callable) -> None:
+        """Callback chạy build + launch VXPEmu screen-only + chụp ảnh (async).
+
+        Trả về True nếu đã khởi động được pipeline; kết quả thật về sau qua
+        `on_run_app_finished` khi giả lập chạy xong bước khói (smoke).
+        """
+        self._run_app = callback
+
+    def set_run_app_stopper(self, callback: Callable) -> None:
+        self._run_app_stopper = callback
+
     def set_problems_provider(self, callback: Callable) -> None:
         self._problems_provider = callback
 
@@ -1091,6 +1109,12 @@ class AIChatView(QWidget):
             else:
                 self._rename_current_session()
             return True
+        if command in {"/run", "/test", "/rungame", "/chay", "/chạy"}:
+            # Lệnh người dùng nhập: build + chạy thử game/app trên giả lập + chụp ảnh.
+            self._append_message("user", "▶ Chạy thử game/app hiện tại (/run)")
+            self.request_run_app(tail or "User requested run/test from the composer.",
+                                 continue_agent=False)
+            return True
         if command == "/skills":
             skill_service = getattr(self.tool_service, "skill_service", None)
             skills = skill_service.discover(self.project_root) if skill_service else []
@@ -1115,12 +1139,14 @@ class AIChatView(QWidget):
                 "/new - start a new persistent session\n"
                 "/sessions - list/resume project sessions\n"
                 "/rename <name> - rename the current session\n"
+                "/run - build + smoke-test the open game/app on VXPEmu (headless + screenshot)\n"
                 "/skills - list available agent skills\n"
                 "/help - show these commands\n\n"
                 "Agent tools: read, grep, glob (all confined to the OPEN project "
                 "only — the agent never reads the LuaS30 IDE's own source), skill "
                 "(load on-demand procedure documents), "
-                "problems (read the live PROBLEMS panel), ui_design, asset, "
+                "problems (read the live PROBLEMS panel), run_app (build + run the "
+                "game/app on the emulator and screenshot it as a smoke test), ui_design, asset, "
                 "edit/write through CODE CHANGES (auto-applied in Edit automatically / "
                 "Full access), and shell according to the access mode.",
             )
@@ -1300,6 +1326,22 @@ class AIChatView(QWidget):
         self.transcript.setTextCursor(cursor)
         self.transcript.ensureCursorVisible()
 
+    def _append_error_line(self, text: str) -> None:
+        """Một DÒNG LỖI đỏ trong transcript — kết nối/thực thi thất bại hoặc áp
+        mã vào dự án thất bại. Kèm đó hoàn nguyên nút send về trạng thái thường
+        (gọi `_set_agent_active(False)`) để người dùng không thấy 'đang làm việc'
+        treo mãi khi lượt đã dừng vì lỗi."""
+        self.start_frame.setVisible(False)
+        self.transcript.setVisible(True)
+        body = html.escape(str(text or "")).replace("\n", "<br>")
+        cursor = self.transcript.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertHtml(
+            f'<div style="color:{palette.RED};"><b>Lỗi</b><br>{body}</div><br>'
+        )
+        self.transcript.setTextCursor(cursor)
+        self.transcript.ensureCursorVisible()
+
     def _shell_policy(self) -> str:
         if not self.config.enable_shell:
             return "disabled"
@@ -1424,6 +1466,14 @@ class AIChatView(QWidget):
             except Exception:
                 pass
 
+        if self._awaiting_run_app:
+            self._awaiting_run_app = False
+            try:
+                if self._run_app_stopper:
+                    self._run_app_stopper()
+            except Exception:
+                pass
+
         worker = self._worker
         if worker and worker.isRunning():
             # Hard stop: request interruption AND close the active provider
@@ -1466,7 +1516,8 @@ class AIChatView(QWidget):
             return
         question = self.prompt.toPlainText().strip()
         if not question:
-            return        self.prompt.clear()
+            return
+        self.prompt.clear()
         if self._handle_slash_command(question):
             return
         self._last_question = question
@@ -1578,7 +1629,6 @@ class AIChatView(QWidget):
             )
 
         self._persist_session()
-        self.status.setText("Ready")
         self.status_message.emit(
             f"ChatAI: {PROVIDER_DEFAULTS[self.config.provider]['label']} / {self.config.model}"
         )
@@ -1626,6 +1676,7 @@ class AIChatView(QWidget):
                 self._offer_shell(parsed.shell_actions[0])
 
         if not automatic_followup:
+            self.status.setText("Ready")
             self._set_agent_active(False)
 
     def _offer_edits(self, edits: tuple[CodeEditAction, ...]) -> None:
@@ -1737,16 +1788,33 @@ class AIChatView(QWidget):
         self.apply_changes_button.setEnabled(False)
         self.activity.add("Code error", message, "error")
         self.status.setText("Code change error")
+        error_text = "Không áp được code vào dự án:\n" + str(message or "")
+        self._append_error_line(error_text)
+        self._history.append({"role": "assistant", "content": error_text})
+        self._persist_session()
+        # Lượt đã dừng vì lỗi -> hoàn nguyên nút send về trạng thái thường,
+        # không để nó kẹt ở trạng thái "đang làm việc".
+        self._set_agent_active(False)
 
     def _run_tools(self, actions, *, continue_after: bool = True) -> None:
         """Chạy lần lượt MỌI lời gọi tool trong một lượt trả lời (kiểu Cline)."""
         if self._cancel_requested or not actions:
             return
         self._set_think_phase("tools")
+        ran_run_app = False
         for action in actions:
             self._run_tool(action, continue_after=False)
+            if str(action.tool or "").lower() == "run_app":
+                # run_app là async (build + giả lập + chụp ảnh): dừng vòng lặp ở
+                # đây, phần continue sẽ do on_run_app_finished quyết định.
+                ran_run_app = True
+                break
         # Khối "Đã chạy N công cụ" thu gọn được — hiệu ứng suy luận trong transcript.
         self._insert_step_block([(a.tool, a.reason) for a in actions])
+        if ran_run_app:
+            # Đã gọi request_run_app: hoặc đang chờ kết quả (callback sẽ continue),
+            # hoặc đã fail và hoàn nguyên nút — cả hai đều không continue ngay bây giờ.
+            return
         if continue_after:
             last = actions[-1]
             self.status.setText(f"Tool {last.tool} finished; AI continuing...")
@@ -1756,6 +1824,14 @@ class AIChatView(QWidget):
         if self._cancel_requested:
             return
         tool = str(action.tool or "").lower()
+        if tool == "run_app":
+            args = action.args or {}
+            op = str(args.get("op") or "run").lower()
+            if op in {"stop", "kill"}:
+                self._stop_run_app()
+                return
+            self.request_run_app(action.reason or "", continue_agent=True)
+            return
         is_design = tool in DESIGN_TOOL_NAMES
         # Thao tác ghi của công cụ thiết kế đi theo đúng access mode như code edit.
         allow_write = is_design and self._edit_policy() != "disabled"
@@ -2058,14 +2134,130 @@ class AIChatView(QWidget):
         self.status.setText("Shell finished; AI continuing...")
         self._queue_continue(self._last_question or action.reason or "Continue")
 
+    def request_run_app(self, reason: str = "", *, continue_agent: bool = True) -> bool:
+        """Build dự án đang mở + chạy VXPEmu screen-only rồi chụp ảnh khói (smoke).
+
+        Hai đường vào dùng chung: (1) tool `run_app` của agent (`continue_agent=True`
+        — kết quả được đưa ngược vào hội thoại để agent tự kiểm chứng), và (2) lệnh
+        người dùng `/run` / nút quick-action (`continue_agent=False` — chỉ báo cho
+        người dùng). Đây là thao tác KHÔNG phá huỷ nên chạy được ở mọi access mode
+        trừ Plan (Plan cấm mọi tác vụ phụ)."""
+        if self._awaiting_run_app:
+            return False
+        if self.current_access_mode() == "plan":
+            self._append_message(
+                "assistant",
+                "Plan mode không chạy build/giả lập. Chọn Ask/Edit/Full rồi chạy thử game/app.",
+            )
+            return False
+        if not self.project_root:
+            self._append_error_line("Chưa mở project nào để chạy thử.")
+            return False
+        if not self._run_app:
+            self._append_error_line("Không có khả năng build/chạy giả lập (run_app) được nối.")
+            return False
+
+        self._run_app_continue_agent = bool(continue_agent)
+        self._set_agent_active(True)
+        self._set_think_phase("tools")
+        self.status.setText("Đang build + chạy thử trên VXPEmu…")
+        self.activity.add("Run", reason or "Build + smoke-test trên giả lập", "shell")
+        try:
+            started = bool(self._run_app(reason or ""))
+        except Exception as exc:  # noqa: BLE001 - báo lỗi thay vì treo nút
+            self._awaiting_run_app = False
+            self._append_error_line("Không khởi động được chạy thử:\n" + str(exc))
+            self._set_agent_active(False)
+            return False
+        if not started:
+            self._awaiting_run_app = False
+            self._append_error_line(
+                "Giả lập đang bận hoặc pipeline từ chối chạy. Thử Dừng tác vụ hiện tại rồi chạy lại."
+            )
+            self._set_agent_active(False)
+            return False
+        self._awaiting_run_app = True
+        return True
+
+    def on_run_app_finished(self, success: bool, message: str, screenshot: str = "") -> None:
+        """Kết quả bất đồng bộ của run_app từ main_window (build + giả lập + ảnh)."""
+        if not self._awaiting_run_app:
+            return
+        self._awaiting_run_app = False
+        continue_agent = self._run_app_continue_agent
+        self._run_app_continue_agent = False
+
+        body = str(message or "").strip() or ("Chạy thử thất bại." if not success else "Chạy thử xong.")
+        if screenshot:
+            body += f"\nẢnh chụp: {screenshot}"
+
+        if success:
+            self._append_message("assistant", body)
+        else:
+            self._append_error_line(body)
+
+        self.activity.add("Run result", body.splitlines()[0][:160], "success" if success else "error")
+
+        if success and continue_agent:
+            # Thành công: đưa kết quả vào lịch sử như một tool-result để agent tự
+            # kiểm chứng rồi tiếp tục lượt.
+            self._history.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Run/test result (build + VXPEmu screen-only smoke):\n"
+                        f"success: True\n"
+                        f"screenshot: {screenshot or '<none>'}\n"
+                        + body
+                        + "\n\nTiếp tục: mô tả ngắn kết quả cho người dùng; nếu ảnh chụp cho "
+                        "thấy lỗi hiển thị, dùng tool problems để chẩn đoán và sửa."
+                    ),
+                    "_internal": True,
+                }
+            )
+            self._persist_session()
+            self.status.setText("Run finished; AI continuing...")
+            self._queue_continue(self._last_question or "Continue after run/test")
+            return
+
+        # THẤT BẠI (mọi đường vào) hoặc lệnh người dùng thuần: in dòng lỗi ở trên rồi
+        # DỪNG — hoàn nguyên nút, KHÔNG tự continue vòng model mới (tránh lặp khi lỗi).
+        if continue_agent and not success:
+            self._history.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Run/test result: THẤT BẠI.\n" + body
+                        + "\n\n(Đã hiển thị dòng lỗi cho người dùng và dừng lượt agent.)"
+                    ),
+                    "_internal": True,
+                }
+            )
+        self._persist_session()
+        self.status.setText("Ready")
+        self._set_agent_active(False)
+
+    def _stop_run_app(self) -> None:
+        """Dừng giả lập đang chạy (tool run_app op=stop)."""
+        if self._run_app_stopper:
+            try:
+                self._run_app_stopper()
+            except Exception:  # noqa: BLE001
+                pass
+        self._awaiting_run_app = False
+        self.activity.add("Run", "Yêu cầu dừng giả lập.", "warning")
+        self._append_message("assistant", "Đã dừng VXPEmu.")
+        self.status.setText("Ready")
+        self._set_agent_active(False)
+
     def _response_failed(self, error: str) -> None:
         sender = self.sender()
         if isinstance(sender, AIRequestThread) and sender is not self._worker:
             return
         if self._cancel_requested:
             return
-        message = "Request failed:\n" + error
-        self._append_message("assistant", message)
+        message = "Không kết nối/thực hiện được với AI Agent:\n" + error
+        self._append_error_line(message)
         self._history.append({"role": "assistant", "content": message})
         self._persist_session()
         self.activity.add("AI error", error, "error")

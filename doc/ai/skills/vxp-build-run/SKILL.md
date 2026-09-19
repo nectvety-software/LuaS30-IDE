@@ -27,6 +27,26 @@ bạn vừa sửa code và cần bằng chứng rằng dự án vẫn chạy đ�
    - Theme: `python tools/studio_theme_check.py` — dòng `FAIL: không có`
      nghĩa là XANH (không phải lỗi).
 
+## Cách nhanh: tool `run_app` / lệnh `/run`
+
+Thay vì tự phát từng shell `build.py` + `run_emulator.py`, IDE đã có sẵn một
+đường "chạy thử game/app" một phát, chạy ngầm + chụp ảnh khung hình VXPEmu làm
+bằng chứng khói (smoke). Hai cách gọi, cùng một pipeline (build → launch
+VXPEmu `--screen-only` → chờ khung hình ổn định → `VxpEmuWindow.capture_to_file`
+vào `<project>/build/smoke/run-*.png` → tự đóng giả lập):
+
+- **Người dùng**: gõ `/run` (hoặc `/test`, `/chạy`) ở ô soạn thảo, hoặc bấm nút
+  quick-action **"Chạy thử game/app"**. Kết quả (kèm đường dẫn ảnh) hiện thẳng
+  trong transcript; nếu build/giả lập lỗi thì có **dòng lỗi đỏ** và nút gửi trở
+  lại trạng thái thường.
+- **AI Agent**: phát một tool block mỗi lượt:
+  `{"tool":"run_app","args":{"op":"run"},"reason":"..."}` — kết quả (kèm
+  screenshot path) được đưa ngược vào hội thoại để bạn tự kiểm chứng rồi continue.
+  `args.op:"stop"` để dừng giả lập. **Không** được khẳng định app chạy đúng trước
+  khi nhận kết quả run_app. `run_app` chạy được ở Ask/Edit/Full; Plan mode từ chối.
+
+Khi đã có ảnh khói mà vẫn muốn thử bằng tay, dùng tiếp trình tự shell bên dưới.
+
 ## Quy tắc an toàn
 
 - Một lệnh shell mỗi lần; đọc kết quả rồi hãy lệnh tiếp (đừng đoán lệnh gộp).

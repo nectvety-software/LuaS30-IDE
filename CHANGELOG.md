@@ -206,6 +206,26 @@ theo tên tệp tài liệu gốc.
   `open_location`, và tự mở lỗi đầu tiên. Kiểm chứng live: thẻ render, chỉ
   severity error được ưu tiên, click neo mở đúng tệp. Validator:
   `tools/validate_ai_skills.py` (mục 7).
+- Sửa composer Chat AI: dòng `self.prompt.clear()` trước đây kẹt trên cùng dòng
+  `return` nên chỉ chạy ở nhánh câu-trống — nay tách dòng riêng để XOÁ HẾT text
+  ngay khi bấm Gửi. Đồng thời siết TRẠNG THÁI NÚT send: khi Agent đang chạy, nút
+  luôn giữ là nút làm việc (glyph stop + `running`), chỉ hoàn nguyên về send khi
+  lượt xong thật (`_response_ready` không còn đặt "Ready" giữa vòng lặp tool) HOẶC
+  có LỖI; mỗi lỗi (kết nối/thực hiện, hoặc áp mã vào project thất bại) nay in
+  DÒNG LỖI đỏ qua `_append_error_line()` rồi `_set_agent_active(False)` — hết
+  cảnh nút kẹt "đang làm việc" mãi. Kiểm chứng live + `drive_ide_as_user.py`,
+  `validate_ai_agent_shell.py` đều xanh.
+- Chạy thử game/app một phát, cả cho người dùng LẪN AI Agent: thêm tool
+  `run_app` (build project → launch VXPEmu `--screen-only` chạy ngầm → chờ khung
+  hình ổn định → `VxpEmuWindow.capture_to_file` chụp ảnh khói vào
+  `<project>/build/smoke/run-*.png` → tự đóng giả lập). Người dùng gõ `/run`
+  (alias `/test`, `/chạy`) hoặc bấm quick-action "Chạy thử game/app"; agent phát
+  `{"tool":"run_app","args":{"op":"run"|"stop"}}`. Chuỗi này BẤT ĐỒNG BỘ:
+  `request_run_app` giữ nút ở trạng thái làm việc tới khi `MainWindow._report_ai_run`
+  gọi lại `on_run_app_finished`; lỗi build/giả lập in dòng LỖI đỏ + hoàn nguyên nút
+  (không tự loop model khi fail), Plan mode từ chối chạy. Tài liệu:
+  `doc/ai/skills/vxp-build-run/SKILL.md`, `doc/studio/STUDIO_GUIDE.md`. Validator:
+  `tools/validate_ai_run_app.py`.
 
 
 ## 1.15.0 — AI Workbench v1

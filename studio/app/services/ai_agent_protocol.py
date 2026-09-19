@@ -140,7 +140,9 @@ DESIGN_TOOL_NAMES = ("ui_design", "asset")
 # "skill": nạp quy trình làm việc theo yêu cầu (xem skill_service.py).
 # "problems": đọc bảng PROBLEMS thật của IDE — handler nằm ở AIChatView vì
 # dữ liệu thuộc main_window, không thuộc service nào cả.
-WORKBENCH_TOOL_NAMES = ("skill", "problems")
+# "run_app": build project + chạy thử game/app trên VXPEmu screen-only + chụp
+# ảnh khói; handler bất đồng bộ cũng nằm ở AIChatView (kết quả về qua callback).
+WORKBENCH_TOOL_NAMES = ("skill", "problems", "run_app")
 TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + WORKBENCH_TOOL_NAMES
 
 # Agent KHÔNG còn quyền đọc mã nguồn của chính LuaS30 IDE (đã bỏ scope="engine").
@@ -598,7 +600,16 @@ def agent_protocol_prompt(
         '{"tool":"problems","args":{"op":"list"},"reason":"Current diagnostics"}\n'
         "```\n"
         "Use it after applying edits to verify the fix, and again at the end of a "
-        "bug-fixing task — follow the problems-autofix skill when one is listed."
+        "bug-fixing task — follow the problems-autofix skill when one is listed.\n"
+        "Run/test tool: build the OPEN project and launch it on the VXPEmu emulator "
+        "(headless, screen-only), then a screenshot of the running app is captured as "
+        "a smoke test you can reason about. Use it when the user asks to run, test, "
+        "preview or check that the game/app works. Emit ONE run_app per turn:\n"
+        "```luas30-tool\n"
+        '{"tool":"run_app","args":{"op":"run"},"reason":"Build and smoke-test the app on the emulator"}\n'
+        "```\n"
+        'op "stop" halts the running emulator. Do not claim the app runs or looks '
+        "correct until a run/test result (with its screenshot path) is returned."
     )
     readonly_tools = (
         "Read-only codebase tools are available and may be used in any access mode. "

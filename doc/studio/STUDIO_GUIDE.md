@@ -600,7 +600,7 @@ reused from the Qt resource, so nothing is bundled). The page gets:
 ### ChatAI specialization: project confinement, the SKILLS system, and the `problems` tool
 
 The agent protocol (`TOOL_NAMES`) exposes `read | grep | glob | ui_design | asset |
-skill | problems`. The agent is **confined to the currently open project**: every
+skill | problems | run_app`. The agent is **confined to the currently open project**: every
 read/grep/glob path is resolved relative to the project root and stays inside it, and
 there is no longer any way to read or edit the LuaS30 IDE's own installation/source
 tree. The old separate `engine` tool (and its `"scope":"engine"` escape hatch that
@@ -645,6 +645,20 @@ style): `luas30-edit` blocks are applied straight into the project (with backups
 under `.luas30/ai-backups`) and the agent loop continues automatically, so the
 recommended fix loop is problems → analyze → edit → re-run problems until clean
 → build (see the `problems-autofix` skill).
+
+The `run_app` tool builds the open project, launches it on VXPEmu in headless
+`--screen-only` mode and captures one smoke screenshot (written to
+`<project>/build/smoke/run-*.png` by `VxpEmuWindow.capture_to_file`) as visual
+evidence, then closes the emulator. It is a genuine **asynchronous** pipeline, so
+`AIChatView.request_run_app(...)` keeps the send button in its working/stop state
+until `MainWindow._report_ai_run` calls back `on_run_app_finished(...)`; on failure
+a red "Lỗi" line is shown and the button reverts (it never auto-loops the model on
+error). The agent calls it with `{"tool":"run_app","args":{"op":"run"|"stop"},"reason":…}`
+(one per turn), and the user can trigger the exact same flow by typing `/run`
+(aliases `/test`, `/chạy`) or the **"Chạy thử game/app"** quick action — Plan mode
+refuses to run. Handlers/wiring live in `AIChatView` + `MainWindow` (callback set
+via `ai_chat.set_run_app` / `set_run_app_stopper`). Validator:
+`tools/validate_ai_run_app.py`.
 
 Every applied edit batch also renders a Cursor-style summary card inside the
 chat transcript (`AIChatView._change_card_html`): header "Đã sửa N tệp" with

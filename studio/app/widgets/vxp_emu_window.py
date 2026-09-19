@@ -346,16 +346,23 @@ class VxpEmuWindow(QWidget):
         return screen.grabWindow(int(self.body.screen.winId())) if screen is not None else None
 
     def capture_screenshot(self) -> None:
-        pixmap = self._grab_screen()
-        if pixmap is None or pixmap.isNull():
-            self.status.setText("Không chụp được màn hình VXPEmu")
-            return
         stamp = QDateTime.currentDateTime().toString("yyyyMMdd-HHmmss")
         output = self.capture_directory() / f"VXPEmu-{stamp}.png"
-        if pixmap.save(str(output), "PNG"):
+        if self.capture_to_file(output):
             self.status.setText(f"Đã chụp · {output.name}")
         else:
-            self.status.setText("Lưu ảnh chụp thất bại")
+            self.status.setText("Không chụp được màn hình VXPEmu")
+
+    def capture_to_file(self, output: Path) -> bool:
+        """Chụp đúng vùng framebuffer VXPEmu đang embed và lưu PNG; trả về True nếu ghi được."""
+        pixmap = self._grab_screen()
+        if pixmap is None or pixmap.isNull():
+            return False
+        try:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            return bool(pixmap.save(str(output), "PNG"))
+        except OSError:
+            return False
 
     def open_capture_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.capture_directory())))
