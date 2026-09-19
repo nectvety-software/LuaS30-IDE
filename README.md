@@ -795,19 +795,3 @@ files are backed up under:
 
 before atomic replacement.
 
-## Bản quyền
-
-© Qeafivels All rights reserved. — <https://qeafivels.com/>
-
-LuaS30 IDE (Studio, LuaS30 Native SDK/API, build tooling, template, tài liệu và
-asset của dự án) là tài sản của Qeafivels. Không được sao chép, sửa đổi, phát
-hành, cấp phép lại hay tạo tác phẩm phái sinh, toàn bộ hoặc một phần, nếu không
-có sự cho phép trước bằng văn bản của Qeafivels. Chi tiết: [`LICENSE`](LICENSE).
-
-Các thành phần bên thứ ba được dùng/bundle **không** thuộc phạm vi thông báo
-trên và vẫn theo giấy phép riêng của chúng — xem
-[`doc/legal/THIRD_PARTY_NOTICES.md`](doc/legal/THIRD_PARTY_NOTICES.md). Giấy phép
-Lua 5.1.5 đi kèm ở [`vendor/lua-5.1.5/COPYRIGHT`](vendor/lua-5.1.5/COPYRIGHT).
-
-Thông tin bản quyền này cũng hiện trong ứng dụng tại **About → About**.
-
