@@ -16,6 +16,7 @@ from __future__ import annotations
 import itertools
 import re
 import unicodedata
+from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPainterPath, QPen
@@ -744,12 +745,21 @@ class DesignerItem(QGraphicsRectItem):
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "DesignerItem":
+    def from_dict(cls, d: dict, base_dir=None) -> "DesignerItem":
         src = d.get("src", "")
         image = None
         entry = sprite_for_src(src)
         if entry is not None:
             image = entry.get("image")
+        elif src and base_dir is not None:
+            # `src` trỏ tới một tệp ảnh CÓ THẬT trên đĩa nhưng chưa được đăng ký
+            # vào registry (AI vừa tạo asset rồi ghi thiết kế, hoặc canvas nạp
+            # màn hình trước lúc quét assets/) -> nạp thẳng từ đĩa và đăng ký để
+            # palette + mọi item cùng src dùng chung, không còn vẽ placeholder.
+            image = load_image(Path(base_dir) / src)
+            if image is not None:
+                register_asset(src, src.rsplit("/", 1)[-1], image, src,
+                               src.rsplit("/", 1)[0] if "/" in src else "assets")
         fill_raw = d.get("fill")
         fill = QColor(fill_raw) if fill_raw else None
         item = cls(d["type"], d["x"], d["y"], d["w"], d["h"], d.get("text", ""),

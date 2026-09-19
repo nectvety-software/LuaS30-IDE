@@ -2105,8 +2105,12 @@ class VxpMainWindow(QWidget):
         self._show_ai_diff(self._ai_change_set, activate=True)
 
     def _reload_applied_editors(self, change_set: PreparedChangeSet) -> None:
+        touched_design = False
         for change in change_set.changes:
             target = change.absolute_path.resolve()
+            rel = str(change.relative_path or "").replace("\\", "/").lower()
+            if rel.endswith("ui_design.json") or rel.startswith("assets/"):
+                touched_design = True
             for group in self.tabs.groups:
                 found = group.find_editor(target)
                 if not found:
@@ -2117,6 +2121,13 @@ class VxpMainWindow(QWidget):
         if self.session.root:
             self.index.set_root(self.session.root)
             self.explorer.tree.refresh()
+        if touched_design:
+            # AI vừa ghi thiết kế/asset — designer là widget sống nên canvas +
+            # registry cũ sẽ giữ nguyên placeholder. Quét lại assets/ rồi nạp lại
+            # màn hình từ đĩa (bỏ qua khi người dùng còn bản vẽ chưa lưu).
+            designer = self.assets_studio.designer
+            designer.sync_project_assets()
+            designer.reload_current_screen()
 
     def _apply_ai_changes(self) -> None:
         change_set = self._ai_change_set

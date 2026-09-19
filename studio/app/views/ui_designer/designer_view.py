@@ -310,7 +310,7 @@ class UIDesignerWidget(QWidget):
 
     def _apply_snapshot(self, snap: dict):
         self.view._close_text_editor()
-        items_to_scene(snap["items"], self.scene)
+        items_to_scene(snap["items"], self.scene, base_dir=self.store.root)
         by_name = {it.name: it for it in self.scene.widget_items()}
         self.scene.clearSelection()
         restored = []
@@ -475,7 +475,7 @@ class UIDesignerWidget(QWidget):
     def _load_screen(self, screen_id: str):
         """Nạp một màn hình từ store lên canvas."""
         items = self.store.screen_items(screen_id)
-        items_to_scene(items, self.scene)
+        items_to_scene(items, self.scene, base_dir=self.store.root)
         self.current_screen = screen_id
         self.store.set_current(screen_id)
         self.scene.clearSelection()
@@ -677,6 +677,7 @@ class UIDesignerWidget(QWidget):
         new_root = Path(root).resolve() if root else None
         if new_root is not None and new_root == self.store.root:
             self.sync_project_assets()
+            self.reload_current_screen()
             self.refresh_screens()
             return
 
@@ -725,6 +726,23 @@ class UIDesignerWidget(QWidget):
             added += 1
         self.palette.refresh_assets()
         return added
+
+    def reload_current_screen(self) -> bool:
+        """Nạp lại màn hình đang mở từ đĩa.
+
+        Dùng sau khi AI (hoặc công cụ ngoài) ghi `.luas30/ui_design.json` và tạo
+        asset: đọc lại payload từ đĩa rồi dựng canvas, để thành phần Hình ảnh do
+        AI tạo hiển thị bitmap thật thay vì placeholder. Bỏ qua khi canvas còn
+        thay đổi CHƯA LƯU để không nuốt mất thao tác của người dùng. Trả True khi
+        đã nạp lại.
+        """
+        if self.store.root is None or self.current_screen is None or self._dirty:
+            return False
+        self.store.load()
+        if not self.store.has_screen(self.current_screen):
+            return False
+        self._load_screen(self.current_screen)
+        return True
 
     # ---------------------------------------------------------------- nhập tài nguyên
     def _run_import(self, kind: str):

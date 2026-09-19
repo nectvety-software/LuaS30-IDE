@@ -219,6 +219,42 @@ def run_flows(view_cls, design_path, export_path, ui_dir, filename) -> Path:
     check("item thiếu name tự sinh ID theo loại",
           bool(ids_dirty) and ids_dirty[0].startswith("button_"), str(ids_dirty))
 
+    print("\n-- 6b. ảnh AI tạo: nạp từ đĩa khi registry trống --", flush=True)
+    from app.views.ui_designer import items as items_mod
+    from app.views.ui_designer.items import DesignerItem, clear_images
+
+    # DesignerItem.from_dict phải tự nạp bitmap từ gốc project khi `src` trỏ tới
+    # tệp có thật nhưng CHƯA có trong registry — chính là lỗi "AI tạo ảnh xong
+    # UI Designer chỉ vẽ placeholder núi".
+    aip = make_project("ai_img")
+    make_image(aip / "assets" / "sprites" / "photo_hero.png", 0xFFE0567A)
+    (aip / ui_dir).mkdir(parents=True, exist_ok=True)
+    (aip / ui_dir / filename).write_text(json.dumps({
+        "version": 2, "canvas": [240, 320], "current": "main",
+        "screens": [{"id": "main", "items": [
+            {"type": "image", "name": "photo_hero", "x": 40, "y": 40,
+             "w": 56, "h": 56, "src": "assets/sprites/photo_hero.png"}]}],
+    }, ensure_ascii=False), encoding="utf-8")
+    clear_images()
+    raw = {"type": "image", "name": "photo_hero", "x": 40, "y": 40, "w": 56,
+           "h": 56, "src": "assets/sprites/photo_hero.png"}
+    it = DesignerItem.from_dict(raw, base_dir=aip)
+    check("from_dict nạp ảnh từ đĩa khi registry trống",
+          it.image is not None and not it.image.isNull())
+    check("ảnh nạp xong được đăng ký để dùng chung",
+          items_mod.image_for_src(raw["src"]) is not None)
+
+    # Luồng thật: designer mở project (chưa có ảnh) -> AI ghi asset + thiết kế
+    # -> sync + reload_current_screen phải dựng lại canvas với bitmap thật.
+    clear_images()
+    live = view_cls()
+    live.set_project(aip)          # registry + canvas đã nạp ảnh
+    live_img = next((i for i in live.scene.widget_items()
+                     if i.widget_type == "image"), None)
+    check("mở project: ảnh AI hiển thị trên canvas",
+          live_img is not None and live_img.image is not None
+          and not live_img.image.isNull())
+
     return project
 
 

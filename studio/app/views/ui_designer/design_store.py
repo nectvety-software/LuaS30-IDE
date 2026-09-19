@@ -425,8 +425,12 @@ def scene_to_items(scene) -> list[dict]:
     return items
 
 
-def items_to_scene(items: Iterable[dict], scene) -> None:
-    """Nạp danh sách item vào canvas (chế độ bulk — không đánh dấu bẩn)."""
+def items_to_scene(items: Iterable[dict], scene, base_dir=None) -> None:
+    """Nạp danh sách item vào canvas (chế độ bulk — không đánh dấu bẩn).
+
+    `base_dir` (gốc project) cho phép thành phần Hình ảnh tự nạp bitmap từ đĩa
+    khi `src` chưa có trong registry — xem `DesignerItem.from_dict`.
+    """
     from .items import DesignerItem
 
     scene.begin_bulk()
@@ -437,7 +441,7 @@ def items_to_scene(items: Iterable[dict], scene) -> None:
             data = _coerce_item(entry)
             if data is None:
                 continue
-            item = DesignerItem.from_dict(data)
+            item = DesignerItem.from_dict(data, base_dir=base_dir)
             scene.addItem(item)
             if data.get("hidden"):
                 item.setVisible(False)

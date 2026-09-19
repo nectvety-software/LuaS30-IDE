@@ -124,6 +124,22 @@ theo tên tệp tài liệu gốc.
   đúng). `build_frozen.py` nay copy `VERSION` vào thư mục frozen: thiếu nó,
   bản đóng băng báo "unknown" và làm nhiễm `setup_state.json`, khiến bản cài
   thật bị hỏi lại thiết lập lần đầu.
+- Sửa lỗi giao diện bản đóng gói (nền desktop xuyên qua sidebar trong suốt +
+  "Phiên bản unknown"): `LuaS30IDE.spec` có `datas=[]` nên `dark_theme.qss`
+  không được bundle — `main._stylesheet()` thiếu tệp này, cửa sổ frameless bật
+  `WA_TranslucentBackground` và lộ nền màn hình. Spec nay chèn
+  `app/vxpui/resources/dark_theme.qss` vào `datas`, `build_frozen.py` copy
+  `VERSION` cạnh exe, và `verify_release.py` thêm chốt chặn bắt buộc tệp qss
+  phải có trong stage. Kiểm chứng trên desktop thật: sidebar tối vẽ đúng.
+- Sửa UI Designer không hiển thị ảnh do AI tạo (chỉ Panel thủ công hiện, ảnh
+  thành placeholder núi, mở lại dự án vẫn hỏng): `DesignerItem.from_dict` chỉ
+  tra ảnh trong registry RAM, mà công cụ AI ghi asset + thiết kế thẳng ra đĩa
+  rồi — không đăng ký gì. Nay `from_dict` nhận `base_dir` (gốc project) và tự
+  `load_image` từ đĩa khi `src` trỏ tới tệp có thật nhưng chưa có trong registry
+  (đồng thời đăng ký để palette dùng chung). `set_project` khi cùng project cũng
+  `reload_current_screen()` (bỏ qua nếu canvas còn thay đổi chưa lưu), và
+  `_apply_ai_changes` gọi designer refresh khi AI vừa ghi `ui_design.json` hoặc
+  `assets/`. Thêm 3 check hồi quy vào `ui_designer_check.py`.
 - UI Designer nâng cấp chỉnh sửa theo chuẩn Canva: hoàn tác/đi lại theo từng
   bước (`Ctrl+Z`/`Ctrl+Shift+Z`, tối đa 60 trạng thái, chọn lại đúng các thành
   phần cũ), chọn nhiều bằng khung cao-su/`Shift`+click/`Ctrl+A`, resize 8 tay
