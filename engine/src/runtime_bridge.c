@@ -221,10 +221,17 @@ static int file_api_ok(void)
 
 static int l_file_exists(lua_State *L)
 {
-    ls30_wchar p[96];ls30_file f;
-    if(!file_api_ok()||!make_user_path(luaL_checkstring(L,1),p,96)){lua_pushboolean(L,0);return 1;}
-    f=ls30_file_open(p,LS30_FILE_READ,1); if(f<0){lua_pushboolean(L,0);return 1;}
-    ls30_file_close(f);lua_pushboolean(L,1);return 1;
+    const char *name;ls30_wchar p[96];ls30_file f;int size=0;ls30_u8 *res;
+    name=luaL_checkstring(L,1);
+    if(file_api_ok()&&make_user_path(name,p,96)){
+        f=ls30_file_open(p,LS30_FILE_READ,1);
+        if(f>=0){ls30_file_close(f);lua_pushboolean(L,1);return 1;}
+    }
+    /* Packed VXP resources are not filesystem files: also check the resource
+       table so existence checks for assets (audio/images) succeed. Read-only. */
+    res=ls30_resource_load(name,&size);
+    if(res){ls30_free(res);lua_pushboolean(L,1);return 1;}
+    lua_pushboolean(L,0);return 1;
 }
 
 static int direct_write(ls30_wchar *p,const char *data,size_t len)
