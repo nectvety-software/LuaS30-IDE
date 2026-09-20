@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#86D0FE"/>
+  <rect y="248" width="240" height="72" fill="#98E5A0"/>
+  <rect x="12" y="14" width="216" height="30" rx="8" fill="#151A22"/>
+  <text x="120" y="34" text-anchor="middle" font-family="monospace" font-size="14" fill="#FFF0CC">PICNIC BRUTE — PHASE 2</text>
+  <rect x="18" y="58" width="204" height="154" rx="10" fill="#FFF0C8" stroke="#D9B56F"/>
+  <rect x="28" y="228" width="184" height="56" rx="10" fill="#20252E"/>
+  <text x="120" y="248" text-anchor="middle" font-family="monospace" font-size="11" fill="#FFF6DE">Optimized storyboard for Nokia 225 / 240x320</text>
+  <text x="120" y="266" text-anchor="middle" font-family="monospace" font-size="11" fill="#FFF6DE">Use as source art reference for in-engine cutscene</text>
+  <circle cx="68" cy="138" r="24" fill="#1A2230"/>
+  <circle cx="160" cy="144" r="28" fill="#E7B071"/>
+  <text x="120" y="192" text-anchor="middle" font-family="monospace" font-size="12" fill="#5A4D43">PICNIC BRUTE — PHASE 2</text>
+</svg>

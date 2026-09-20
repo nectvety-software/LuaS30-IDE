@@ -1,0 +1,14 @@
+{
+  "name": "CatBoxMRE",
+  "vendor": "VXPstore",
+  "app_name_multilang": [
+    "CatBoxMRE",
+    "CatBoxMRE",
+    "CatBoxMRE"
+  ],
+  "description": "Cat in a Little Box - Nokia 225 low-memory build",
+  "version": 153,
+  "required_ram": 256,
+  "imsi": "1234567890",
+  "run_in_background": 0
+}

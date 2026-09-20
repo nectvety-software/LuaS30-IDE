@@ -1,0 +1,11 @@
+-- CatBoxMRE development loader. Production uses bundled main.lua.
+dofile("src/engine.lua")
+dofile("src/stage_data.lua")
+dofile("src/sprites.lua")
+dofile("src/audio.lua")
+dofile("src/save.lua")
+dofile("src/world.lua")
+dofile("src/debug.lua")
+dofile("src/render.lua")
+dofile("src/game.lua")
+dofile("src/99_entry.lua")
