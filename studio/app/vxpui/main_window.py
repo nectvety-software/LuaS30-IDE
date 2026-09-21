@@ -2261,6 +2261,10 @@ class VxpMainWindow(QWidget):
             # appear in the editor strip, just like files changed by VS Code agents.
             editor = found_editor or self.tabs.open_file(target, activate=False)
             if editor is not None:
+                self.tabs.set_ai_file_status(
+                    target,
+                    "modified" if change.existed else "created",
+                )
                 opened_targets.append(target)
 
         if self.session.root:
