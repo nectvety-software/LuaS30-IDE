@@ -197,7 +197,7 @@ QTabWidget#EditorTabs QTabBar::tab {
     margin-right: 0;
     padding: 6px 10px;
     min-width: 96px;
-    max-width: 180px;
+    max-width: 240px;
 }
 QTabWidget#EditorTabs QTabBar::tab:selected {
     background: @BG_SURFACE;
@@ -213,6 +213,23 @@ QToolButton#TabCloseButton {
     padding: 0;
 }
 QToolButton#TabCloseButton:hover { background: @BG_PRESSED; }
+QLabel#AITabStatusBadge {
+    background: @BG_RAISED;
+    color: @TEXT_3;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 6px;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 600;
+}
+QLabel#AITabStatusBadge[aiState="modified"] {
+    color: @AMBER;
+    border-color: @AMBER_BORDER;
+}
+QLabel#AITabStatusBadge[aiState="created"] {
+    color: @GREEN_LIGHT;
+    border-color: @GREEN_BORDER;
+}
 QPlainTextEdit#CodeEditor {
     background: @BG_SURFACE;
     color: @TEXT_2;
