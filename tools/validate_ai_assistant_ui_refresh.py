@@ -59,6 +59,9 @@ required_theme = (
     'QPushButton#AIProviderCompact',
     'QPushButton#AIChatSendIcon',
     'QPushButton#AIChatSendIcon[running="true"]',
+    'QLabel#AITabStatusBadge',
+    'QLabel#AITabStatusBadge[aiState="modified"]',
+    'QLabel#AITabStatusBadge[aiState="created"]',
 )
 
 missing = [f"chat:{token}" for token in required_chat if token not in chat]
@@ -66,6 +69,13 @@ missing += [f"theme:{token}" for token in required_theme if token not in theme]
 
 
 required_editor_tabs = (
+    'class _AITabStatusBadge(QLabel)',
+    '"modified": "AI Modified"',
+    '"created": "AI Created"',
+    'self.setText(f"● {label}")',
+    'def set_ai_file_status(self, path: str | Path, state: str) -> bool',
+    'QTabBar.ButtonPosition.LeftSide',
+    'def clear_ai_file_status(self, path: str | Path) -> bool',
     'def open_file(self, path: str | Path, *, activate: bool = True)',
     'if activate:\n                self.setCurrentIndex(existing[0])',
     'if activate:\n            self.setCurrentIndex(index)',
@@ -77,6 +87,9 @@ missing += [
 ]
 
 required_editor_groups = (
+    'def set_ai_file_status(self, path: str | Path, state: str) -> bool',
+    'return group.set_ai_file_status(resolved, state)',
+    'def clear_ai_file_status(self, path: str | Path) -> bool',
     'def open_file(self, path: str | Path, *, activate: bool = True)',
     'return self.active_tabs().open_file(resolved, activate=activate)',
     'return self.groups[target_index].open_file(path, activate=False)',
@@ -90,6 +103,8 @@ missing += [
 required_ai_file_tabs = (
     'def _reload_applied_editors(self, change_set: PreparedChangeSet)',
     'self.tabs.open_file(target, activate=False)',
+    'self.tabs.set_ai_file_status(',
+    '"modified" if change.existed else "created"',
     'self.tabs.open_file(opened_targets[0], activate=True)',
     'files created or changed by the agent are opened as background tabs',
 )
@@ -133,4 +148,5 @@ print("PASS: Gửi/Dừng state remains wired to the existing hard-stop flow")
 print("PASS: existing provider, context, read-only tools and AI Changes signals remain wired")
 print("PASS: refreshed theme uses the existing LuaS30 palette/QSS architecture")
 print("PASS: every AI-changed/created text file opens as a VS Code-like editor tab")
+print("PASS: AI-touched tabs expose AI Modified / AI Created badges with distinct theme states")
 print("PASS: background tab opening does not steal focus until the primary AI file is selected")
