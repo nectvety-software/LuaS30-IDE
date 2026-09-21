@@ -69,6 +69,53 @@ INFO_BORDER = "#164e63"
 DIFF_ADDED_BG = "#173321"      # nền dòng được thêm
 DIFF_REMOVED_BG = "#3b1f24"    # nền dòng bị xoá
 
+# ---------------------------------------------------------------- Chat AI (Modern Dark IDE)
+# Bảng MÀU RIÊNG cho khu vực "AI Trợ lý" — dark xanh-tối + accent cam #FF6A00
+# theo PROMPT tái thiết kế "AI Coding Assistant". Chrome toàn cục của Studio VẪN
+# dùng palette VS Code ở trên; chỉ selector `AIChat*`/`AIWelcome*`/... lấy @CHAT_.
+CHAT_BG = "#0d1014"               # nền chính sâu nhất của khung chat
+CHAT_BG_STRONGER = "#11151a"      # header / composer strip / thanh tab
+CHAT_SURFACE = "#151a21"          # card, tin nhắn, pill model
+CHAT_PANEL = "#131820"            # panel phụ / input nền
+CHAT_RAISED = "#191f27"           # nút, chip, badge (mức card-hover)
+CHAT_RAISED_HOVER = "#1a2028"     # hover icon trần / nút
+CHAT_HOVER = "#171c23"            # hover hàng / tab chưa chọn
+CHAT_BORDER = "#272e38"           # viền chính
+CHAT_BORDER_WEAK = "#1e242c"      # viền mảnh, phân cách
+CHAT_TEXT = "#f2f4f7"             # chữ nhấn / tiêu đề
+CHAT_TEXT_2 = "#b7c1cd"           # chữ nội dung chính
+CHAT_TEXT_3 = "#9da7b5"           # chữ phụ / nhãn mờ
+CHAT_TEXT_4 = "#646d79"           # chữ disabled / ghi chú
+CHAT_ACCENT = "#ff6a00"           # cam nhấn chính
+CHAT_ACCENT_HOVER = "#ff7a1a"
+CHAT_ACCENT_PRESSED = "#e95f00"
+CHAT_ACCENT_DEEP = "#4a2814"      # nền/avatar accent nhạt
+CHAT_ON_ACCENT = "#111111"        # chữ trên nền cam
+CHAT_INPUT = "#131820"            # nền ô soạn prompt
+CHAT_INPUT_BORDER = "#303946"     # viền ô soạn prompt
+CHAT_TAB_ACTIVE = "#1c1815"       # nền tab đang chọn (cam ám rất tối)
+CHAT_ACCESS_BG = "#191714"        # nền pill Full Access đang bật
+CHAT_STOP = "#e95555"             # nút Dừng khi agent chạy
+CHAT_SEND_DISABLED = "#242a31"    # nền nút Gửi khi rỗng
+CHAT_ON_SEND_DISABLED = "#68727e" # chữ nút Gửi khi rỗng
+CHAT_TS = "#77818e"               # timestamp góc phải thẻ tin
+CHAT_AVATAR_USER = "#252d38"      # avatar "B"
+CHAT_SCROLL_THUMB = "#343c47"     # thanh cuộn mảnh
+CHAT_SCROLL_THUMB_HOVER = "#48515e"
+# Khối code trong transcript (render HTML nội bộ, không đụng editor palette):
+CHAT_CODE_BG = "#0c1117"
+CHAT_CODE_BORDER = "#242c36"
+CHAT_CODE_GUTTER = "#0a0e13"      # nền cột số dòng
+CHAT_CODE_GUTTER_TEXT = "#727d8c" # số dòng
+CHAT_CODE_LANG = "#8995a5"        # nhãn ngôn ngữ ở header
+# 6 màu cú pháp riêng cho code block chat (khác bảng VS Code của editor):
+CHAT_SYN_KEYWORD = "#c792ea"
+CHAT_SYN_STRING = "#e6b673"
+CHAT_SYN_NUMBER = "#82aaff"
+CHAT_SYN_FUNCTION = "#7fdbca"
+CHAT_SYN_COMMENT = "#66717f"
+CHAT_SYN_VARIABLE = "#aab8d4"
+
 # ---------------------------------------------------------------- màu cú pháp
 # Ngoại lệ có chủ ý — bảng VS Code dark+, KHÔNG đồng bộ theo chrome.
 SYN_KEYWORD = "#c586c0"

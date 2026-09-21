@@ -229,6 +229,112 @@ theo tên tệp tài liệu gốc.
 - `run.bat`: bỏ hard-code số phiên bản — banner + log giờ ĐỌC TRỰC TIẾP từ file
   `VERSION` gốc repo (`set /p APP_VERSION`) nên luôn khớp, không phải sửa tay mỗi
   lần bump version.
+- Tài liệu nêu rõ nguyên tắc kiểu Codex: "codebase" mà AI đọc VÀ ghi là **project
+  mà người dùng tạo/mở** (`Documents\LuaS30 Projects\<name>`), KHÔNG bao giờ là thư
+  mục cài đặt LuaS30-IDE (IDE chỉ là trình soạn thảo + biên dịch MRE + launcher
+  VXPEmu). Ghi được cưỡng chế bởi `AIChangeService._safe_target` (chối đường dẫn
+  tuyệt đối, ổ đĩa, `..`/symlink thoát khỏi gốc, tên được bảo vệ); tệp mới tạo dưới
+  gốc project, tệp cũ backup ở `<project>/.luas30/ai-backups/`. Viết ở
+  `doc/studio/STUDIO_GUIDE.md`.
+- **Ép code fenced trong chat thành tệp dự án** (Codex-style): khi model bỏ qua
+  protocol `luas30-edit` và chỉ dán nguồn trong khối Markdown thường, nếu info-string
+  CỦA KHỐI khai báo tệp (` ```lua path=src/menu.lua ````, `file=`, hoặc bare
+  ` ```src/conf.lua ``) thì `_recover_fenced_files` (`ai_agent_protocol.py`) biến nó
+  thành `CodeEditAction` ghi CẢ TỆP MỚI vào project đang mở, và xoá khối code đó khỏi
+  văn bản chat. Đây chỉ là fallback: khối `luas30-edit`/XML thắng, fence chỉ ghi ngôn
+  ngữ không đường dẫn vẫn rơi về phục hồi theo tệp đang mở, snippet ngắn không đường
+  dẫn KHÔNG tạo tệp (tránh nhận nhầm). `_extract_fenced_path` chặn trước tuyệt đối/ổ
+  đĩa/`..`, `_safe_target` giam lại lần nữa khi ghi. Prompt bảo model đặt đường dẫn
+  tương đối-project trong fence. Validator: `tools/validate_ai_fenced_files.py`.
+- **Thẻ lỗi PROBLEM cập nhật realtime trong Chat AI** (thay snapshot tĩnh): trước đây
+  mỗi lần áp code lại chèn MỘT thẻ "N lỗi cần sửa" đứng im, sửa xong trạng thái không
+  đổi. Nay `AIChatView` giữ MỘT **thẻ sống** (`_live_problem_card`) và khớp lỗi theo
+  **chữ ký** (`_problem_row_sig` = severity + đường dẫn tương đối + thông điệp, KHÔNG
+  dùng số dòng vì nó nhảy khi sửa). Lỗi biến mất -> `✓ Đã sửa` (xanh, gạch ngang); lỗi
+  mới -> thêm vào; header đếm lại `⚠ còn N lỗi · ✓ M đã sửa`; sạch hết -> `✓ Đã sửa hết`.
+  `refresh_problem_card()` chạy cả khi áp code (`report_errors_after_change`) LẪN khi
+  editor phát `diagnostics_changed`: `MainWindow._diagnostics_changed` mồi
+  `_ai_problem_timer` (throttle 400ms) -> `_refresh_ai_problem_card`, nên thẻ bám theo
+  cả lỗi người dùng tự sửa, không chỉ lỗi AI sửa. Tool `problems` cũng ghi vào thẻ sống.
+  Phiên mới hoàn nguyên thẻ. Validator: `tools/validate_ai_problem_card_live.py`.
+- **Bong bóng tin nhắn Chat AI theo kiểu Codex/DuckChat**: `_append_message` trước
+  đây chỉ in nhãn trần `<b>You</b>` / `<b>AI` bám sát mép trái dock. Nay mỗi lượt
+  là một **thẻ** đúng chất Codex: lời người dùng = bong bóng nền `BG_RAISED` viền
+  mảnh **canh phải**, lời trợ lý = khối nội dung **canh trái** có viền trái accent
+  mảnh, và phía trên là **header dòng nhỏ** — "BẠN" hoặc `◆ <tên model>` (màu
+  accent) để biết model nào đang trả lời. Cột nội dung có khoảng thở
+  (`document().setDocumentMargin(12)`) thay vì chữ kẹt mép. Thuần PySide6 (dựng
+  HTML trong `QTextBrowser`), không đổi hành vi vòng lặp agent.
+- **Sửa AI "không thấy sửa gì": nhận tool-call có THÂN LÀ JSON**: model kiểu
+  Ling/Gemini hay bỏ qua fenced `luas30-edit` và phát thẻ
+  `tool_call` tên dính thẳng sau tag, thân là JSON (không phải cặp
+  `arg_key`), thường quên đóng thẻ — đúng như ảnh: tool-call tên
+  `luas30-edit` mang mảng JSON `{path,find,replace}`. Ca `EDIT_RE` (cần fence)
+  lẫn `XML_TOOL_RE` (cần `>` + `arg_key` + đóng thẻ) đều bỏ lọt, nên lỗi sửa
+  của model không bao giờ được áp. Hàm mới `_recover_json_tool_calls` dùng
+  `json.JSONDecoder().raw_decode` (chịu thân nhiều dòng + thẻ không đóng) dịch
+  nó thành `CodeEditAction`/`ToolAction` và xoá khỏi văn bản chat. Chỉ nhận khi
+  thân mở bằng `[` hoặc `{`; prose nhắc `tool_call` không payload vẫn bỏ qua.
+  Chính sách plan/disabled vẫn do view `_edit_policy()` giữ (giống fenced block).
+  Validator: `tools/validate_ai_json_toolcall.py`.
+- **Khu vực AI Trợ lý khoác giao diện DuckChat (QSS thuần Python)**: thêm nhóm
+  token `CHAT_*` vào `palette.py` — nền gần đen (`#0d0d0d`→`#242424`), accent cam
+  `#ff6700`, viền `#262626` — rồi trỏ toàn bộ selector `AIChat*`/`AIWelcome*`/
+  `AIQuick*`/`AIContext*`/`AIThinking*`/`AIActivity*`/`AIShell*`/`AIAccess*`/
+  `AIChanges*`/`AIProvider*`/`AISessionsMenu` trong `theme.py` về `@CHAT_*`
+  (bo góc vẫn chỉ 6/8/12, nút gửi pill, badge model font mono); `ai_chat_view.py`
+  đổi HTML bong bóng/thẻ/card sang `palette.CHAT_*`, giữ màu trạng thái ngữ nghĩa
+  (xanh/đỏ/hổ phách) cho diff·PROBLEM·shell. Chỉ đổi CHROME — cơ chế full access
+  (`_edit_policy`/`_shell_policy`/`ACCESS_MODES`/vòng lặp agent) và palette VS
+  Code toàn cục giữ nguyên. `studio_theme_check.py` PASS, 19 validator
+  `validate_ai_*` PASS.
+- **Nâng khu vực AI Trợ lý sát bản DuckChat thật (thẻ tin nhắn + khối code)**: mỗi
+  lượt chuyện giờ là một **thẻ bo viền** có **avatar tròn** (người dùng nền
+  `CHAT_RAISED` chữ "B" canh phải; trợ lý nền `CHAT_ACCENT_DEEP` dấu ◆ canh trái)
+  kèm **tên** "Bạn"/"AI Trợ lý", thay cho khối bong bóng cũ chỉ in nhãn trần.
+  `_render_markdown` tách văn bản thường khỏi **fenced code block**: khối code
+  render dạng **bảng có cột số dòng** (số mờ canh phải, code thụt đầu dòng bằng
+  `&nbsp;`), **tô màu cú pháp Lua** (comment/chuỗi/số/từ khoá qua `_LUA_TOKEN_RE`
+  + palette `SYN_*`), và **nút "Sao chép"** neo `x-luas30://copy/<id>` — bấm là
+  nội dung vào clipboard (`_copy_blocks` đăng ký khi render, `QApplication.clipboard`).
+  Tab "Chat" đang chọn đổi sang **viền cam** (`#AIChatTab:checked` nền trong);
+  composer chia **hai hàng**: hàng icon đính kèm/@/{ } + gợi ý "Shift + Enter để
+  xuống dòng", hàng pill truy cập/model + **nút "Gửi"** thành pill chữ cam (giữ
+  nguyên `objectName=AIChatSendIcon` và dòng `apply_icon(... "stop", 13)` mà
+  validator `validate_ai_full_access_stop.py` ghim); **status bar đáy** mới
+  "● Ready" trái + tagline "Hỗ trợ lập trình tốt hơn mỗi ngày ♥" phải. Thuần
+  PySide6/HTML trong `QTextBrowser` (góc bo của thẻ là giới hạn của QTextBrowser,
+  chấp nhận vuông); không đụng vòng lặp agent, `_edit_policy`/`_shell_policy` hay
+  palette VS Code toàn cục. `studio_theme_check.py` PASS, 19 `validate_ai_*` PASS.
+- **AI Trợ lý theo chuẩn "Modern Dark IDE / AI Coding Assistant"**: bảng `CHAT_*`
+  được viết lại đúng spec prompt — nền `#0d1014`, panel `#11151a`, thẻ `#151a21`,
+  ô nhập `#131820`, accent `#ff6a00/#ff7a1a/#e95f00`, cùng 20 token mới (trạng
+  thái dừng `CHAT_STOP`, nút gửi bị tắt, timestamp, avatar người dùng, thanh cuộn,
+  khối code `CHAT_CODE_*` và 6 màu cú pháp `CHAT_SYN_*`). `theme.py`: header
+  50px, tab Chat hoạt động nền `#1c1815` viền cam, **thanh cuộn mảnh 6px**
+  (thumb `#343c47`), composer bo 10px viền focus cam, pill Full Access **viền cam
+  thay vì tô cam**, nút Gửi/Gửi-Dừng có `:pressed` + `:disabled`; `studio_theme_check.py`
+  nới tập hợp bán kính cho phép thành 6/8/10/12. Logic tách vào module mới
+  `ai_chat_render.py` (`TranscriptHtmlRenderer`: avatar, đầu thẻ kèm **timestamp
+  góc phải**, markdown, tô sáng Lua cả lời gọi hàm, khối code có số dòng + "Sao
+  chép"), `ai_chat_view.py` thêm **composer tự lớn 86→180px**, **cuộn thông minh**
+  (không nhảy xuống nếu người dùng đang đọc lên — hiện nút "↓ Tin nhắn mới"),
+  **Esc = dừng agent**, nút Gửi tự tắt khi trống, nhãn/model co giãn responsive
+  360/420/480/600 (rút còn icon dưới 430px, tên model có ellipsis). Toàn bộ hợp
+  đồng cũ giữ nguyên: `ACCESS_MODES`/chính sách sửa-vỏ, `worker.abort()`, neo
+  `x-luas30://{copy,step,review,more,openfile}`, các dòng apply_icon bị validator
+  ghim. `studio_theme_check.py` PASS, 19 `validate_ai_*` PASS, render offscreen
+  360/420/480/600 không rò theme sáng.
+- **Siết đúng thông số spec của prompt "Cursor agent"** (đợt 2, chỉ số đo — không
+  đổi kiến trúc): tab Chat cao **42px** chữ 13px (spec 42–46); tiêu đề "AI Trợ lý"
+  **18px** (spec typography 18–20); icon header **18px** (spec 18–20); pill model
+  cao **42px** (spec 42–44); nút Gửi cao **44px** (spec 44–46); composer đệm trong
+  **14px** (spec padding 14, đồng bộ hằng số tự lớn 86→180 sang `pad=32`); đầu
+  khối code đệm 10px → cao ~35px (spec 34–38); font code đổi sang chuỗi
+  **"JetBrains Mono" → "Cascadia Code" → Consolas** (thay vì Consolas trần) và
+  transcript khai báo **"Inter" → "Segoe UI"** theo đúng thứ tự ưu tiên typography
+  spec. Kiểm lại bằng `studio_theme_check.py` PASS + 19 `validate_ai_*` PASS +
+  render offscreen 360/420/480/600: footer không tràn, send/model không overlap.
 
 
 ## 1.15.0 — AI Workbench v1

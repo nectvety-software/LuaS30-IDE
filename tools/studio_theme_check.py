@@ -13,7 +13,8 @@ Ba nhóm kiểm tra:
   A. Tĩnh — bảng màu
      * `theme.py` không còn hex trực tiếp, mọi màu là token `@TEN`.
      * `APP_STYLE` giải ra được, không sót token nào.
-     * Bo góc chỉ còn ba mức 6 / 8 / 12px.
+     * Bo góc chỉ còn bốn mức 6 / 8 / 10 / 12px (10 = thẻ lớn + nút Gửi của
+       panel AI Trợ lý theo PROMPT "Modern Dark AI Assistant").
      * Không còn `color: white|black`.
      * Mọi hex trong `studio/**/*.py` phải nằm trong `palette.py`, trừ những
        file có trong ALLOWLIST (màu cú pháp, bảng màu nội dung game, swatch).
@@ -104,7 +105,7 @@ def check_palette() -> None:
     check("APP_STYLE giải hết token", not leftover, f"sót={leftover[:5]}")
 
     radii = sorted({int(r) for r in re.findall(r"border-radius: (\d+)px", APP_STYLE)})
-    check("bo góc chỉ còn 6/8/12px", set(radii) <= {6, 8, 12}, f"radii={radii}")
+    check("bo góc chỉ còn 6/8/10/12px", set(radii) <= {6, 8, 10, 12}, f"radii={radii}")
 
     check("không còn 'color: white|black'",
           not re.search(r"color:\s*(?:white|black)\b", APP_STYLE))

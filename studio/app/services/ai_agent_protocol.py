@@ -26,6 +26,96 @@ GENERIC_CODE_RE = re.compile(
     r"```([^\n`]*)\n(.*?)```",
     re.IGNORECASE | re.DOTALL,
 )
+# Models sometimes ignore the luas30-edit protocol and paste complete source in a
+# plain Markdown fence. When that fence NAMES a project file in its info string
+# (```lua path=src/menu.lua```, ```file=src/menu.lua```, or a bare ```src/menu.lua
+# header) we recover it into a whole-file edit so generated code becomes a real
+# project file Codex-style. Confinement to the open project is still enforced
+# downstream by AIChangeService._safe_target, so a bogus/absolute path can never
+# escape into the IDE install tree.
+FENCE_PATH_ATTR_RE = re.compile(
+    r"\b(?:path|file|filename|title)\s*[:=]\s*[\"']?([^\s\"']+)[\"']?",
+    re.IGNORECASE,
+)
+# Models often put the file directive on its own first line inside the fence, e.g.
+# ```lua\npath=src/menu.lua\nlocal Menu = {}\n... So a full-line directive at the
+# top of the block body is treated the same as an info-string path.
+FENCE_DIRECTIVE_LINE_RE = re.compile(
+    r"^\s*(?:path|file|filename|title)\s*[:=]\s*(\S.*?)\s*$",
+    re.IGNORECASE,
+)
+FENCE_ALLOWED_SUFFIXES = frozenset({
+    ".lua", ".c", ".h", ".cpp", ".hpp", ".cc", ".py", ".js", ".ts", ".tsx",
+    ".jsx", ".json", ".md", ".txt", ".xml", ".conf", ".cfg", ".ini", ".css",
+    ".html", ".htm", ".vxp", ".gitignore", ".csv", ".yaml", ".yml",
+})
+
+
+def _extract_fenced_path(header: str) -> str:
+    """Trả về đường dẫn tương đối-project nếu info-string khai báo một tệp,
+    ngược lại rỗng (để ```lua trần vẫn rơi về phục hồi theo tệp đang mở)."""
+    token = str(header or "").strip()
+    if not token or token.lower().startswith("luas30-"):
+        return ""
+    match = FENCE_PATH_ATTR_RE.search(token)
+    if match:
+        candidate = match.group(1).strip()
+    else:
+        parts = token.split()
+        candidate = parts[0].strip("[](){}<>") if parts else ""
+    candidate = candidate.replace("\\", "/").strip().strip("/")
+    if not candidate:
+        return ""
+    if candidate.startswith("/") or re.match(r"^[A-Za-z]:", candidate):
+        return ""
+    if ".." in candidate.split("/"):
+        return ""
+    if os.path.splitext(candidate)[1].lower() not in FENCE_ALLOWED_SUFFIXES:
+        return ""
+    return candidate
+
+
+def _recover_fenced_files(raw: str) -> tuple[list[CodeEditAction], str]:
+    edits: list[CodeEditAction] = []
+    spans: list[tuple[int, int]] = []
+    for match in GENERIC_CODE_RE.finditer(raw):
+        header = str(match.group(1) or "")
+        code = str(match.group(2) or "").replace("\r\n", "\n").replace("\r", "\n")
+        path = _extract_fenced_path(header)
+        drop_first_line = False
+        if not path and code.strip():
+            line_match = FENCE_DIRECTIVE_LINE_RE.match(code.split("\n", 1)[0])
+            if line_match:
+                path = _extract_fenced_path("path=" + line_match.group(1).strip("\"' "))
+                drop_first_line = bool(path)
+        if not path:
+            continue
+        lines = code.split("\n")
+        if drop_first_line:
+            lines = lines[1:]
+        body = "\n".join(lines).strip("\n")
+        if not body.strip():
+            continue
+        body += "\n" if body and not body.endswith("\n") else ""
+        edits.append(
+            CodeEditAction(
+                path=path,
+                reason="Recovered fenced code block as file content.",
+                content=body,
+            )
+        )
+        spans.append((match.start(), match.end()))
+    if not edits:
+        return [], raw
+    visible = raw
+    for start, end in sorted(spans, reverse=True):
+        visible = visible[:start] + visible[end:]
+    visible = re.sub(r"\n{3,}", "\n\n", visible).strip()
+    if not visible:
+        visible = "Đã chuẩn bị ghi các tệp: " + ", ".join(e.path for e in edits[:6]) + "."
+    return edits, visible
+
+
 # Một số model (Gemini/Ling-style) bỏ qua protocol fenced JSON và phát
 # tool-call gốc XML: <tool_call=read> / <tool_call name="read"> với các cặp
 # <arg_key>/<arg_value>. Bộ parse dưới dịch dạng đó sang ToolAction/
@@ -132,6 +222,7 @@ def _xml_to_actions(name: str, args: dict) -> tuple[list, list]:
         tools.append(ToolAction(tool=tool, args=dict(args), reason=reason))
     return tools, edits
 
+
 # Tên công cụ hợp lệ trong khối ```luas30-tool — nguồn DUY NHẤT, dùng cho cả
 # bước lọc lúc parse lẫn bước quảng bá trong prompt. Thêm công cụ mới thì thêm
 # ở đây, đừng sửa hai nơi.
@@ -164,11 +255,16 @@ def _downgrade_engine_call(args: dict) -> tuple[str, dict]:
     return tool, value
 
 
+# Model kieu Ling/Gemini co the phat tool-call dang the XML voi ten dinh sau
+# tag va THAN LA JSON, khong phai fenced protocol. Cac ham recover duoi day
+# nap dang do (xem _recover_json_tool_calls).
+
 @dataclass(frozen=True)
 class ShellAction:
     command: str
     reason: str = ""
     cwd: str = "project"
+
 
 @dataclass(frozen=True)
 class ToolAction:
@@ -195,6 +291,131 @@ class ParsedAgentResponse:
     tool_actions: tuple[ToolAction, ...]
     code_edits: tuple[CodeEditAction, ...]
     recovered_plain_edit: bool = False
+
+
+# Model kieu Ling/Gemini co the phat tool-call dang the XML: ten dinh thang sau
+# tag, THAN LA JSON (khong phai cap arg_key), va thuong quen dong the. Ca
+# EDIT_RE (can fence ba huy) lan XML_TOOL_RE (can '>' + arg_key + dong the) deu
+# bo lot, nen loi sua code cua model bi roi xuong dat va "khong thay sua gi".
+# _recover_json_tool_calls o duoi nap JSON do bang raw_decode, chiu duoc than
+# nhieu dong va the khong dong, bien no thanh CodeEditAction/ToolAction that.
+_EDIT_CALL_NAMES = {
+    "luas30-edit", "edit", "edit_file", "write", "write_file",
+    "create_file", "replace_in_file", "apply_patch",
+}
+_TOOL_CALL_OPEN_RE = re.compile(r"<tool_call", re.IGNORECASE)
+_TOOL_CALL_NAME_RE = re.compile(
+    r"\s*(?:(?:name|tool)\s*=\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]|([A-Za-z0-9_.:\-]+))",
+    re.IGNORECASE,
+)
+_JSON_DECODER = json.JSONDecoder()
+_CLOSE_TAG = "<" + "/tool_call>"
+
+
+def _edits_from_json(payload) -> list[CodeEditAction]:
+    out: list[CodeEditAction] = []
+    items = payload if isinstance(payload, list) else [payload]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        content = item.get("content")
+        find = item.get("find", item.get("old"))
+        replace = item.get("replace", item.get("new"))
+        if content is None and find is None:
+            continue
+        out.append(
+            CodeEditAction(
+                path=path,
+                reason=str(item.get("reason") or "").strip(),
+                content=str(content) if content is not None else None,
+                find=str(find) if find is not None else None,
+                replace=str(replace) if replace is not None else "",
+                replace_all=bool(item.get("replace_all", False)),
+            )
+        )
+    return out
+
+
+def _tools_from_json(payload) -> list[ToolAction]:
+    out: list[ToolAction] = []
+    items = payload if isinstance(payload, list) else [payload]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        tool = str(item.get("tool") or "").strip().lower()
+        args = item.get("args")
+        if not isinstance(args, dict):
+            args = {k: v for k, v in item.items() if k not in {"tool", "reason"}}
+        if tool == "engine":
+            tool, args = _downgrade_engine_call(args)
+        if tool not in TOOL_NAMES:
+            continue
+        out.append(
+            ToolAction(tool=tool, args=dict(args), reason=str(item.get("reason") or "").strip())
+        )
+    return out
+
+
+def _recover_json_tool_calls(raw: str):
+    """Tra (tools, edits, spans) tu cac the tool_call co than la JSON.
+
+    spans = vung text da chuyen thanh hanh dong, phuc vu xoai khoi noi dung
+    hien thi (giong cach _recover_fenced_files lam voi khoi fenced).
+    """
+    tools: list[ToolAction] = []
+    edits: list[CodeEditAction] = []
+    spans: list[tuple[int, int]] = []
+    for opener in _TOOL_CALL_OPEN_RE.finditer(raw):
+        start = opener.start()
+        after = opener.end()
+        close = raw.lower().find(_CLOSE_TAG, after)
+        region = raw[after: close if close != -1 else len(raw)]
+        match = _TOOL_CALL_NAME_RE.match(region)
+        name = ""
+        if match:
+            name = (match.group(1) or match.group(2) or "").strip().lower()
+        search_from = match.end() if match else 0
+        json_start = -1
+        for idx in range(search_from, len(region)):
+            if region[idx] in "[{":
+                json_start = idx
+                break
+        if json_start < 0:
+            continue
+        try:
+            payload, consumed = _JSON_DECODER.raw_decode(region[json_start:])
+        except ValueError:
+            continue
+        mapped = _XML_TOOL_ALIASES.get(name, "")
+        if name in _EDIT_CALL_NAMES or mapped == "write":
+            edits.extend(_edits_from_json(payload))
+        elif mapped in TOOL_NAMES:
+            if isinstance(payload, dict) and "tool" in payload:
+                tools.extend(_tools_from_json(payload))
+            elif isinstance(payload, dict):
+                tools.append(
+                    ToolAction(
+                        tool=mapped,
+                        args=dict(payload),
+                        reason=str(payload.get("reason") or "").strip(),
+                    )
+                )
+            else:
+                continue
+        else:
+            recovered = _edits_from_json(payload)
+            if recovered:
+                edits.extend(recovered)
+            else:
+                tools.extend(_tools_from_json(payload))
+        end = after + json_start + consumed
+        if close != -1:
+            end = close + len(_CLOSE_TAG)
+        spans.append((start, end))
+    return tools, edits, spans
 
 
 DANGEROUS_PATTERNS = (
@@ -448,17 +669,37 @@ def parse_agent_response(
                 continue
             tools.append(action)
         edits.extend(xml_edits)
-    if allow_plain_code_edit and not edits and active_path:
-        recovered, recovered_visible = _recover_plain_fenced_edit(
-            raw,
-            active_path=active_path,
-            active_text=active_text,
-            user_request=user_request,
-        )
-        if recovered is not None:
-            edits.append(recovered)
-            visible_source = recovered_visible
+    # Tool-call dang the XML nhung THAN LA JSON (quen fence, quen dong the) —
+    # thu phat hien CUOI CUNG de khong trung lap voi fenced/XML chuan. Xoai
+    # vung da chuyen thanh hanh dong khoi noi dung hien thi.
+    json_tools, json_edits, json_spans = _recover_json_tool_calls(raw)
+    for action in json_tools:
+        if any(a.tool == action.tool and a.args == action.args for a in tools):
+            continue
+        tools.append(action)
+    edits.extend(json_edits)
+    if json_spans and visible_source is raw:
+        cut = raw
+        for s, e in sorted(json_spans, reverse=True):
+            cut = cut[:s] + cut[e:]
+        visible_source = re.sub(r"\n{3,}", "\n\n", cut).strip()
+    if allow_plain_code_edit and not edits:
+        recovered_files, files_visible = _recover_fenced_files(raw)
+        if recovered_files:
+            edits.extend(recovered_files)
+            visible_source = files_visible
             recovered_plain_edit = True
+        elif active_path:
+            recovered, recovered_visible = _recover_plain_fenced_edit(
+                raw,
+                active_path=active_path,
+                active_text=active_text,
+                user_request=user_request,
+            )
+            if recovered is not None:
+                edits.append(recovered)
+                visible_source = recovered_visible
+                recovered_plain_edit = True
 
     visible = SUMMARY_RE.sub("", visible_source)
     visible = SHELL_RE.sub("", visible)
@@ -538,7 +779,8 @@ def agent_protocol_prompt(
         edits = "Plan mode is active. Do not emit luas30-edit blocks or claim files were modified."
     else:
         shell = (
-            "Full Access is active. Shell actions are executed automatically without confirmation. "
+            "Full Access is active. Safe and project-scoped shell actions are executed automatically without confirmation. "
+            "Commands classified dangerous or secret-bearing still ask for confirmation — do not try to bypass that gate. "
             "Work autonomously, request one command at a time, inspect its result, and continue until the task is complete. "
             "Do not claim a command ran until its result is returned. Emit a fenced block like:\n"
             "```luas30-shell\n"
@@ -571,6 +813,9 @@ def agent_protocol_prompt(
             "```luas30-edit\n"
             '{"path":"src/new.lua","content":"-- full file\\n","reason":"Add module"}\n'
             "```\n"
+            "If you instead paste a complete file in a plain Markdown fence, put the "
+            "project-relative path in the fence header (```lua path=src/menu.lua``` or "
+            "a bare ```src/menu.lua header) so the IDE writes it as a real project file. "
             "Do not claim an edit was applied until the tool reports that it was applied."
             if edit_enabled
             else

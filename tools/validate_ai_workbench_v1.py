@@ -55,7 +55,17 @@ for token in (
 
 for token in ('class AIDiffView','CURRENT','PROPOSED','Apply Code','mark_applied'):
     if token not in diff:
-        errors.append('AI diff view missing: '+token)
+        errors.append('AI Changes review tab missing: '+token)
+for token in ('Unified','accept_current_requested','reject_current_requested',
+              'set_view_mode','_render_unified','Accept File','Reject File'):
+    if token not in diff:
+        errors.append('Codex-style unified diff missing: '+token)
+for token in ('def apply_one','def discard'):
+    if token not in changes:
+        errors.append('Per-file AI change service missing: '+token)
+for token in ('_accept_ai_change_file','_reject_ai_change_file'):
+    if token not in editor:
+        errors.append('Per-file AI change wiring missing: '+token)
 
 for token in (
     'self.ai_chat.changes_proposed.connect(self._prepare_ai_changes)',

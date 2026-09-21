@@ -136,6 +136,12 @@ class VxpMainWindow(QWidget):
         self._ai_run_started = False
         self._ai_run_reported = False
         self._ai_run_attempts = 0
+        # Thẻ lỗi trong Chat AI cập nhật realtime theo diagnostic của editor: nén
+        # các lần đổi liên tục (gõ phím) về một nhịp 400ms.
+        self._ai_problem_timer = QTimer(self)
+        self._ai_problem_timer.setSingleShot(True)
+        self._ai_problem_timer.setInterval(400)
+        self._ai_problem_timer.timeout.connect(self._refresh_ai_problem_card)
         # Nén bão output build/emu: gom nhiều chunk rồi vẽ MỘT lần mỗi nhịp
         # ~60ms, thay vì repaint cả console + build_log + dialog cho TỪNG chunk
         # (nguyên nhân chính gây lag khi compile in hàng trăm dòng).
@@ -2011,6 +2017,16 @@ class VxpMainWindow(QWidget):
         self.bottom.setTabText(
             index, f"PROBLEMS ({errors + warnings})" if (errors or warnings) else "PROBLEMS"
         )
+        # Nén nhịp: nếu Chat AI đang có thẻ lỗi sống, làm tươi nó theo trạng thái
+        # vừa phân tích lại (lỗi biến mất -> ✓ Đã sửa, lỗi mới -> thêm vào).
+        if self.ai_chat.has_problem_card():
+            self._ai_problem_timer.start()
+
+    def _refresh_ai_problem_card(self) -> None:
+        try:
+            self.ai_chat.refresh_problem_card()
+        except Exception:
+            pass
 
     def _update_cursor(self, line: int, column: int, selected: int) -> None:
         text = f"Ln {line}, Col {column}"
@@ -2207,6 +2223,8 @@ class VxpMainWindow(QWidget):
             view = AIDiffView()
             view.apply_all_requested.connect(self._apply_ai_changes)
             view.reject_all_requested.connect(self._reject_ai_changes)
+            view.accept_current_requested.connect(self._accept_ai_change_file)
+            view.reject_current_requested.connect(self._reject_ai_change_file)
             return view
 
         self._enter_editor()
@@ -2271,12 +2289,13 @@ class VxpMainWindow(QWidget):
             {"path": c.relative_path, "added": c.added_lines, "removed": c.removed_lines}
             for c in change_set.changes
         ]
+        diffs = {c.relative_path: c.unified_diff() for c in change_set.changes}
         view = self.tabs.tool_widget("ai-diff")
         if isinstance(view, AIDiffView):
             view.mark_applied(backup)
         self._ai_last_applied = change_set
         self._ai_last_applied_backup = backup
-        self.ai_chat.on_code_changes_applied(paths, str(backup or ""), files=files)
+        self.ai_chat.on_code_changes_applied(paths, str(backup or ""), files=files, diffs=diffs)
         self.bottom.console.append(
             f"[AI] Applied {len(paths)} code file(s)" + (f"; backup: {backup}" if backup else "")
         )
@@ -2296,6 +2315,70 @@ class VxpMainWindow(QWidget):
             view.mark_rejected()
         self.ai_chat.on_code_changes_rejected()
         self.show_status("AI code changes rejected")
+
+    def _accept_ai_change_file(self) -> None:
+        """Accept file dang chon kieu Codex: ghi ngay + tiep tuc duyet file khac."""
+        from app.services.ai_change_service import PreparedChange, PreparedChangeSet
+
+        change_set = self._ai_change_set
+        view = self.tabs.tool_widget("ai-diff")
+        if not change_set or not isinstance(view, AIDiffView):
+            return
+        row = view.files.currentRow()
+        if not (0 <= row < len(change_set.changes)):
+            self.show_status("No AI change file selected")
+            return
+        rel = change_set.changes[row].relative_path
+        try:
+            target, backup = self.ai_change_service.apply_one(change_set, row)
+        except Exception as exc:
+            self.ai_chat.on_code_changes_failed(str(exc))
+            self.show_status(f"AI code apply failed: {exc}")
+            return
+        try:
+            text = Path(target).read_text(encoding="utf-8-sig")
+        except OSError:
+            text = ""
+        single = PreparedChangeSet(
+            change_set.project_root,
+            [PreparedChange(
+                relative_path=rel, absolute_path=Path(target),
+                before=text, after=text)],
+        )
+        self._reload_applied_editors(single)
+        view.set_change_set(change_set if change_set.changes else None)
+        if not change_set.changes:
+            view.mark_applied(backup)
+            self._ai_last_applied = change_set
+            self._ai_last_applied_backup = backup
+        self.ai_chat.on_code_changes_applied(
+            [rel], str(backup or ""),
+            files=[{"path": rel, "added": 0, "removed": 0}])
+        self.bottom.console.append(f"[AI] Accepted {rel}" + (f"; backup: {backup}" if backup else ""))
+        self.show_status(f"AI code accepted: {rel}")
+        QTimer.singleShot(700, lambda: self.ai_chat.report_errors_after_change())
+
+    def _reject_ai_change_file(self) -> None:
+        """Reject file dang chon: bo khoi set, giu cac file khac."""
+        change_set = self._ai_change_set
+        view = self.tabs.tool_widget("ai-diff")
+        if not change_set or not isinstance(view, AIDiffView):
+            return
+        row = view.files.currentRow()
+        if not (0 <= row < len(change_set.changes)):
+            self.show_status("No AI change file selected")
+            return
+        try:
+            dropped = self.ai_change_service.discard(change_set, row)
+        except Exception as exc:
+            self.show_status(f"AI code reject failed: {exc}")
+            return
+        view.set_change_set(change_set if change_set.changes else None)
+        if not change_set.changes:
+            view.mark_rejected()
+            self._ai_change_set = None
+            self.ai_chat.on_code_changes_rejected()
+        self.show_status(f"AI code rejected: {dropped.relative_path} ({len(change_set.changes)} left)")
 
     def _ask_ai_about_problems(self, question: str) -> None:
         if not str(question or "").strip():

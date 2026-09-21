@@ -50,7 +50,7 @@ check(
     "entry card không lọt vào payload gửi provider",
 )
 check(
-    'self.ai_chat.on_code_changes_applied(paths, str(backup or ""), files=files)' in mw,
+    'self.ai_chat.on_code_changes_applied(paths, str(backup or ""), files=files' in mw,
     "main_window truyền +/− từng tệp khi áp code",
 )
 check(
