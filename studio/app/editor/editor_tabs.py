@@ -76,7 +76,7 @@ class _AITabStatusBadge(QLabel):
             raise ValueError(f"Unsupported AI tab state: {state}")
         self.setProperty("aiState", value)
         label = self.LABELS[value]
-        self.setText(f"● {label}")
+        self.setText(label)
         self.setToolTip(label)
         self.style().unpolish(self)
         self.style().polish(self)
