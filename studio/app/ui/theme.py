@@ -639,78 +639,232 @@ QPlainTextEdit#HexView {
 
 APP_STYLE += _substitute(r"""
 QFrame#CenterWorkbench { background: @BG_INK; }
-QWidget#AIChatView { background: @BG_INK; border-left: 1px solid @BORDER; }
-QFrame#AIChatHeader { background: @BG_INK; border-bottom: 1px solid @BORDER; }
-QLabel#AIChatTitle { color: @TEXT; font-weight: 700; font-size: 13px; }
-QFrame#AIChatTabBar { background: @BG_INK; border-bottom: 1px solid @BORDER; }
-QPushButton#AIChatTab {
-    background: transparent; color: @TEXT_3; border: 1px solid transparent;
-    border-radius: 8px; min-height: 24px; padding: 0 10px; font-size: 11px;
+QWidget#AIChatView {
+    background: @BG_SURFACE;
+    border-left: 1px solid @BORDER;
 }
-QPushButton#AIChatTab:hover { background: @BG_HOVER; color: @TEXT_2; }
+QFrame#AIChatHeader {
+    background: @BG_SURFACE;
+    border-bottom: 1px solid @BORDER;
+    min-height: 42px;
+}
+QLabel#AIChatHeaderIcon { background: transparent; border: 0; }
+QLabel#AIChatTitle {
+    color: @TEXT;
+    font-weight: 700;
+    font-size: 14px;
+    background: transparent;
+}
+QFrame#AIChatTabBar {
+    background: @BG_SURFACE;
+    border-bottom: 1px solid @BORDER;
+}
+QPushButton#AIChatTab {
+    background: transparent;
+    color: @TEXT_3;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    min-height: 28px;
+    padding: 0 12px;
+    font-size: 11px;
+}
+QPushButton#AIChatTab:hover {
+    background: @BG_HOVER;
+    color: @TEXT_2;
+}
 QPushButton#AIChatTab:checked {
-    background: @BG_PRESSED; color: @TEXT; border-color: @BORDER_STRONG;
+    background: @BG_RAISED;
+    color: @TEXT;
+    border-color: @AMBER_BORDER;
     font-weight: 600;
 }
-QStackedWidget#AIChatPages, QWidget#AIChatPage { background: @BG_INK; }
-QFrame#AIChatStart { background: @BG_INK; }
+QStackedWidget#AIChatPages,
+QWidget#AIChatPage {
+    background: @BG_SURFACE;
+}
+QFrame#AIChatStart { background: @BG_SURFACE; }
 QFrame#AIWelcomeCard {
-    background: @BG_ALT; border: 1px solid @BORDER_STRONG; border-radius: 12px;
+    background: @BG_ALT;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 12px;
 }
-QLabel#AIWelcomeAvatar { background: @ACCENT; border-radius: 12px; }
-QLabel#AIWelcomeName { color: @TEXT; font-weight: 700; font-size: 12px; background: transparent; }
+QLabel#AIWelcomeAvatar {
+    background: @ACCENT;
+    border-radius: 12px;
+}
+QLabel#AIWelcomeName {
+    color: @TEXT;
+    font-weight: 700;
+    font-size: 12px;
+    background: transparent;
+}
 QLabel#AIModelBadge {
-    color: @ACCENT; background: @BG_RAISED; border: 1px solid @BORDER_STRONG;
-    border-radius: 6px; padding: 1px 6px; font-size: 10px; font-weight: 600;
+    color: @ACCENT_HOVER;
+    background: @BG_RAISED;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
 }
-QLabel#AIWelcomeText { color: @TEXT_3; font-size: 11px; background: transparent; }
+QLabel#AIWelcomeText {
+    color: @TEXT_3;
+    font-size: 11px;
+    background: transparent;
+}
 QPushButton#AIQuickAction {
-    background: @BG_RAISED; color: @TEXT_2; border: 1px solid @BORDER_STRONG;
-    border-radius: 8px; min-height: 28px; padding: 0 8px; font-size: 11px;
+    background: @BG_RAISED;
+    color: @TEXT_2;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 8px;
+    min-height: 30px;
+    padding: 0 9px;
+    font-size: 11px;
     text-align: left;
 }
 QPushButton#AIQuickAction:hover {
-    background: @BG_PRESSED; border-color: @BORDER_HOVER; color: @TEXT;
+    background: @BG_PRESSED;
+    border-color: @BORDER_HOVER;
+    color: @TEXT;
+}
+QTextBrowser#AIChatTranscript {
+    background: @BG_SURFACE;
+    color: @TEXT_2;
+    border: 0;
+    padding: 12px;
+    font-size: 11px;
+    selection-background-color: @BG_SELECT_SOFT;
+}
+QFrame#AIThinkingFrame {
+    background: @BG_SURFACE;
+    border-top: 1px solid @BORDER;
+}
+QLabel#AIThinkingSpinner {
+    color: @ACCENT;
+    font-size: 13px;
+    font-weight: 700;
+}
+QLabel#AIThinkingLabel {
+    color: @TEXT_3;
+    font-size: 10px;
+    font-style: italic;
+}
+QFrame#AIContextCard {
+    background: @BG_SURFACE;
+    border-top: 1px solid @BORDER;
+}
+QLabel#AIContextCardTitle {
+    color: @TEXT_2;
+    font-size: 11px;
+    font-weight: 700;
 }
 QLabel#AIContextBadge {
-    color: @INFO; background: @BG_RAISED; border: 1px solid @BORDER;
-    border-radius: 6px; padding: 2px 5px; font-size: 10px;
+    color: @INFO;
+    background: @BG_RAISED;
+    border: 1px solid @BORDER;
+    border-radius: 6px;
+    padding: 3px 6px;
+    font-size: 10px;
 }
-QFrame#AIContextCard { background: @BG_INK; border-top: 1px solid @BORDER; }
-QLabel#AIContextCardTitle { color: @TEXT_2; font-size: 11px; font-weight: 700; }
 QLabel#AIContextChip {
-    color: @TEXT_3; background: @BG_RAISED; border: 1px solid @BORDER;
-    border-radius: 6px; padding: 2px 6px; font-size: 10px;
+    color: @TEXT_3;
+    background: @BG_RAISED;
+    border: 1px solid @BORDER;
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 10px;
 }
-QCheckBox#AIContextAuto { color: @INFO; font-size: 10px; spacing: 4px; }
-QLabel#AIContextCaption { color: @TEXT_4; font-size: 10px; font-weight: 600; }
-QLabel#AIContextValue { color: @TEXT_2; font-size: 11px; }
-QLabel#AIPageNote { color: @TEXT_4; font-size: 10px; }
+QCheckBox#AIContextAuto {
+    color: @INFO;
+    font-size: 10px;
+    spacing: 4px;
+}
+QLabel#AIContextCaption {
+    color: @TEXT_4;
+    font-size: 10px;
+    font-weight: 600;
+}
+QLabel#AIContextValue {
+    color: @TEXT_2;
+    font-size: 11px;
+}
+QLabel#AIPageNote {
+    color: @TEXT_4;
+    font-size: 10px;
+}
 QToolButton#AIChatToolButton {
-    min-width: 24px; max-width: 24px; min-height: 23px; max-height: 23px;
-    background: transparent; border: 0; border-radius: 6px;
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
 }
-QToolButton#AIChatToolButton:hover { background: @BG_HOVER; }
-QFrame#AIConfigPanel { background: @BG_ALT; border-bottom: 1px solid @BORDER; }
-QTextBrowser#AIChatTranscript {
-    background: @BG_INK; color: @TEXT_2; border: 0; padding: 8px; font-size: 11px;
+QToolButton#AIChatToolButton:hover {
+    background: @BG_HOVER;
+    border-color: @BORDER;
 }
-QFrame#AIThinkingFrame { background: @BG_INK; border-top: 1px solid @BORDER; }
-QLabel#AIThinkingSpinner { color: @ACCENT; font-size: 13px; font-weight: 700; }
-QLabel#AIThinkingLabel { color: @TEXT_3; font-size: 10px; font-style: italic; }
-QFrame#AIChatComposer { background: @BG_INK; border-top: 1px solid @BORDER; }
+QFrame#AIConfigPanel {
+    background: @BG_ALT;
+    border-bottom: 1px solid @BORDER;
+}
+QFrame#AIChatComposer {
+    background: @BG_SURFACE;
+    border-top: 1px solid @BORDER;
+}
 QPlainTextEdit#AIChatPrompt {
-    background: @BG_ALT; color: @TEXT_2; border: 1px solid @BORDER_STRONG;
-    border-radius: 8px; padding: 6px 9px; font-size: 11px;
+    background: @BG_INK;
+    color: @TEXT_2;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 12px;
+    padding: 9px 11px;
+    font-size: 11px;
+    selection-background-color: @BG_SELECT_SOFT;
 }
 QPlainTextEdit#AIChatPrompt:focus { border-color: @ACCENT; }
-QLabel#AIChatStatus { color: @TEXT_4; font-size: 10px; }
-QPushButton#AIChatSend {
-    min-width: 66px; min-height: 25px; background: @ACCENT;
-    border: 1px solid @ACCENT_HOVER; border-radius: 6px; color: @ON_ACCENT;
+QToolButton#AIComposerToolButton,
+QToolButton#AIComposerTextTool {
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    background: transparent;
+    color: @TEXT_3;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0;
+    font-size: 11px;
+    font-weight: 600;
 }
-QPushButton#AIChatSend:hover { background: @ACCENT_HOVER; }
+QToolButton#AIComposerTextTool {
+    min-width: 30px;
+    max-width: 30px;
+}
+QToolButton#AIComposerToolButton:hover,
+QToolButton#AIComposerTextTool:hover {
+    background: @BG_HOVER;
+    color: @TEXT;
+    border-color: @BORDER;
+}
+QLabel#AIComposerHint {
+    color: @TEXT_5;
+    font-size: 9px;
+}
+QLabel#AIStatusDot {
+    color: @GREEN_LIGHT;
+    font-size: 9px;
+}
+QLabel#AIChatStatus {
+    color: @TEXT_4;
+    font-size: 10px;
+}
+QLabel#AIStatusHint {
+    color: @TEXT_5;
+    font-size: 9px;
+}
 """)
+
 
 APP_STYLE += _substitute(r"""
 QDialog#MediaTekMREConfigDialog {
@@ -916,15 +1070,16 @@ QPushButton#AIShellReject:hover { background: @BG_PRESSED; }
 APP_STYLE += _substitute(r"""
 /* AI Workbench v1 */
 QPushButton#AIAccessModeButton {
-    min-height: 27px;
-    max-height: 27px;
-    min-width: 136px;
+    min-height: 32px;
+    max-height: 32px;
+    min-width: 138px;
     background: @BG_RAISED;
     color: @TEXT_2;
     border: 1px solid @BORDER_STRONG;
     border-radius: 8px;
-    padding: 0 9px 0 7px;
+    padding: 0 10px 0 8px;
     text-align: left;
+    font-size: 10px;
 }
 QPushButton#AIAccessModeButton:hover {
     background: @BG_PRESSED;
@@ -932,6 +1087,7 @@ QPushButton#AIAccessModeButton:hover {
 }
 QPushButton#AIAccessModeButton[accessMode="full"] {
     color: @ACCENT_HOVER;
+    background: @BG_RAISED;
     border-color: @AMBER_BORDER;
 }
 QMenu#AIAccessMenu {
@@ -951,16 +1107,9 @@ QWidget#AIAccessOption {
     border: 0;
     border-radius: 8px;
 }
-QWidget#AIAccessOption:hover {
-    background: @BG_PRESSED;
-}
-QWidget#AIAccessOption[checked="true"] {
-    background: @BG_PRESSED;
-}
-QLabel#AIAccessOptionIcon {
-    background: transparent;
-    border: 0;
-}
+QWidget#AIAccessOption:hover { background: @BG_PRESSED; }
+QWidget#AIAccessOption[checked="true"] { background: @BG_PRESSED; }
+QLabel#AIAccessOptionIcon { background: transparent; border: 0; }
 QPushButton#AIAccessOptionIconGlyph {
     background: transparent;
     border: 0;
@@ -984,20 +1133,33 @@ QLabel#AIAccessOptionCheck {
     font-weight: 700;
 }
 QPushButton#AIProviderCompact {
-    background: @BG_RAISED; color: @TEXT_3; border: 1px solid @BORDER_STRONG;
-    border-radius: 8px; min-height: 24px; padding: 0 8px; font-size: 10px;
+    min-height: 32px;
+    min-width: 96px;
+    background: @BG_RAISED;
+    color: @TEXT_3;
+    border: 1px solid @BORDER_STRONG;
+    border-radius: 8px;
+    padding: 0 9px;
+    font-size: 10px;
+    text-align: left;
 }
 QPushButton#AIProviderCompact:hover {
-    background: @BG_PRESSED; border-color: @BORDER_HOVER; color: @TEXT;
+    background: @BG_PRESSED;
+    border-color: @BORDER_HOVER;
+    color: @TEXT;
 }
 QPushButton#AIChatSendIcon {
-    min-width: 28px;
-    max-width: 28px;
-    min-height: 28px;
-    max-height: 28px;
+    min-width: 68px;
+    max-width: 78px;
+    min-height: 32px;
+    max-height: 32px;
     border-radius: 8px;
+    padding: 0 10px;
     background: @ACCENT;
+    color: @ON_ACCENT;
     border: 1px solid @ACCENT_HOVER;
+    font-size: 10px;
+    font-weight: 700;
 }
 QPushButton#AIChatSendIcon:hover {
     background: @ACCENT_HOVER;
@@ -1006,6 +1168,7 @@ QPushButton#AIChatSendIcon:hover {
 QPushButton#AIChatSendIcon[running="true"] {
     background: @RED_DEEP;
     border-color: @RED_DEEP;
+    color: @TEXT;
 }
 QPushButton#AIChatSendIcon[running="true"]:hover {
     background: @RED_DEEP;
@@ -1037,8 +1200,8 @@ QPushButton#AIRejectChanges,
 QPushButton#AIApplyChanges,
 QPushButton#AIShellReject,
 QPushButton#AIShellRun {
-    min-height: 24px;
-    padding: 0 8px;
+    min-height: 26px;
+    padding: 0 9px;
     border-radius: 6px;
     background: @BG_HOVER;
     border: 1px solid @BORDER_STRONG;
