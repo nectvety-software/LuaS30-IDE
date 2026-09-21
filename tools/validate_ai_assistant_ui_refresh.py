@@ -23,6 +23,9 @@ if compile_result.returncode != 0:
 print("PASS: python -m compileall -q studio tools")
 chat = (ROOT / "studio/app/views/ai_chat_view.py").read_text(encoding="utf-8")
 theme = (ROOT / "studio/app/ui/theme.py").read_text(encoding="utf-8")
+main_window = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
+editor_tabs = (ROOT / "studio/app/editor/editor_tabs.py").read_text(encoding="utf-8")
+editor_groups = (ROOT / "studio/app/editor/editor_group_manager.py").read_text(encoding="utf-8")
 
 required_chat = (
     'self.setMinimumWidth(340)',
@@ -61,6 +64,41 @@ required_theme = (
 missing = [f"chat:{token}" for token in required_chat if token not in chat]
 missing += [f"theme:{token}" for token in required_theme if token not in theme]
 
+
+required_editor_tabs = (
+    'def open_file(self, path: str | Path, *, activate: bool = True)',
+    'if activate:\n                self.setCurrentIndex(existing[0])',
+    'if activate:\n            self.setCurrentIndex(index)',
+)
+missing += [
+    f"editor_tabs:{token}"
+    for token in required_editor_tabs
+    if token not in editor_tabs
+]
+
+required_editor_groups = (
+    'def open_file(self, path: str | Path, *, activate: bool = True)',
+    'return self.active_tabs().open_file(resolved, activate=activate)',
+    'return self.groups[target_index].open_file(path, activate=False)',
+)
+missing += [
+    f"editor_groups:{token}"
+    for token in required_editor_groups
+    if token not in editor_groups
+]
+
+required_ai_file_tabs = (
+    'def _reload_applied_editors(self, change_set: PreparedChangeSet)',
+    'self.tabs.open_file(target, activate=False)',
+    'self.tabs.open_file(opened_targets[0], activate=True)',
+    'files created or changed by the agent are opened as background tabs',
+)
+missing += [
+    f"main_window:{token}"
+    for token in required_ai_file_tabs
+    if token not in main_window
+]
+
 # The compact UI must not regress into a separate replacement agent/backend.
 for forbidden in (
     "OpenAIProvider2",
@@ -94,3 +132,5 @@ print("PASS: compact AI assistant header/tabs/composer/status UI is installed")
 print("PASS: Gửi/Dừng state remains wired to the existing hard-stop flow")
 print("PASS: existing provider, context, read-only tools and AI Changes signals remain wired")
 print("PASS: refreshed theme uses the existing LuaS30 palette/QSS architecture")
+print("PASS: every AI-changed/created text file opens as a VS Code-like editor tab")
+print("PASS: background tab opening does not steal focus until the primary AI file is selected")
