@@ -630,7 +630,9 @@ class AIChatView(QWidget):
         code_button.setObjectName("AIComposerTextTool")
         code_button.setText("{ }")
         code_button.setToolTip("Chèn khối code Lua")
-        code_button.clicked.connect(\n            lambda: self.prompt.insertPlainText("```lua" + chr(10) + chr(10) + "```")\n        )
+        code_button.clicked.connect(
+            lambda: self.prompt.insertPlainText("```lua\\n\\n```")
+        )
         prompt_tools.addWidget(code_button)
 
         prompt_tools.addStretch(1)
