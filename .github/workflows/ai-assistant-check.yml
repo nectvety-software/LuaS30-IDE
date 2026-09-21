@@ -9,6 +9,8 @@ on:
       - "studio/app/ui/theme.py"
       - "studio/app/services/ai_*.py"
       - "tools/validate_ai_*.py"
+      - "tools/studio_theme_check.py"
+      - "requirements-studio.txt"
       - ".github/workflows/ai-assistant-check.yml"
   workflow_dispatch:
 
@@ -35,3 +37,36 @@ jobs:
 
       - name: Validate Full Access and Hard Stop
         run: python tools/validate_ai_full_access_stop.py
+
+
+  windows-theme-render:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QPA_FONTDIR: C:\Windows\Fonts
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Studio dependencies
+        run: python -m pip install -r requirements-studio.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q studio tools
+
+      - name: Render-check Studio theme and AI file badges
+        run: python -u tools/studio_theme_check.py --shots build/theme-shots
+
+      - name: Upload theme screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-theme-shots-windows
+          path: build/theme-shots
+          if-no-files-found: ignore
