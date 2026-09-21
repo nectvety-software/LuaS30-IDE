@@ -2273,26 +2273,33 @@ class VxpMainWindow(QWidget):
             designer.reload_current_screen()
 
     def _open_ai_touched_tabs(self, change_set: PreparedChangeSet) -> None:
-        """Giống VS Code: tệp AI vừa sửa/tạo được mở thành tab trong editor.
+        """Open every AI-touched source file as a VS Code-like editor tab.
 
-        Tệp đã mở thì chỉ nạp lại nội dung (giữ tab, khỏi mở trùng); tệp mới
-        thì mở tab. Tab được chọn cuối cùng là tệp đầu tiên trong change set.
+        Existing tabs are reused; new/closed files open in the background, each
+        receives an AI Modified / AI Created badge, and the first changed file is
+        activated after the batch is prepared.
         """
         self._enter_editor()
-        first_editor = None
+        opened_targets: list[Path] = []
         for change in change_set.changes:
-            target = change.absolute_path
-            if not Path(target).is_file():
+            target = change.absolute_path.resolve()
+            if not target.is_file():
                 continue
-            editor = self.tabs.open_file(target)
+            editor = self.tabs.open_file(target, activate=False)
             if editor is None:
                 continue
             editor.setPlainText(change.after)
             editor.document().setModified(False)
-            if first_editor is None:
-                first_editor = editor
-        if first_editor is not None:
-            first_editor.setFocus()
+            self.tabs.set_ai_file_status(
+                target,
+                "modified" if change.existed else "created",
+            )
+            opened_targets.append(target)
+
+        if opened_targets:
+            editor = self.tabs.open_file(opened_targets[0], activate=True)
+            if editor is not None:
+                editor.setFocus()
 
     def _apply_ai_changes(self) -> None:
         change_set = self._ai_change_set
