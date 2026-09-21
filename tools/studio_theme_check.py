@@ -362,7 +362,7 @@ def check_ai_tab_badges(app, out_dir: Path | None) -> None:
 
         check(
             f"{label}: đúng text",
-            badge.text() == f"● {label}",
+            badge.text() == label,
             f"text={badge.text()!r}",
         )
         check(
