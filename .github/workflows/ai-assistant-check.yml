@@ -1,0 +1,37 @@
+name: AI Assistant Checks
+
+on:
+  pull_request:
+    paths:
+      - "studio/app/editor/**"
+      - "studio/app/views/ai_chat_view.py"
+      - "studio/app/vxpui/main_window.py"
+      - "studio/app/ui/theme.py"
+      - "studio/app/services/ai_*.py"
+      - "tools/validate_ai_*.py"
+      - ".github/workflows/ai-assistant-check.yml"
+  workflow_dispatch:
+
+jobs:
+  syntax-and-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python sources
+        run: python -m compileall -q studio tools
+
+      - name: Validate AI assistant UI and editor tabs
+        run: python tools/validate_ai_assistant_ui_refresh.py
+
+      - name: Validate AI Workbench wiring
+        run: python tools/validate_ai_workbench_v1.py
+
+      - name: Validate Full Access and Hard Stop
+        run: python tools/validate_ai_full_access_stop.py
