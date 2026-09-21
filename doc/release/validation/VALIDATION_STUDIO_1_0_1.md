@@ -56,8 +56,13 @@ lại xác nhận xuống dòng đúng.
 - `tools/build_frozen.py --out dist/frozen` → `dist/frozen/LuaS30IDE` (566 MB),
   đã kiểm chứng stage chứa `app/vxpui/resources/dark_theme.qss` bản mới
   (bo góc 12px) và `VERSION` = `1.0.1`.
-- `tools/package_single_exe.py --out dist` (Inno Setup offline, compile
-  379,7 s): **DUY NHẤT 1 FILE** `dist/LuaS30IDE-Setup-1.0.1.exe` —
-  510.933.627 byte (~487,3 MB), cài wizard hoặc im lặng `/SILENT`.
-- SHA-256: `63e1fcb3748363cb9e98f38ff9229d24f3561fa825832119c8cfc35b2302eef2`
+- `tools/package_single_exe.py --out dist` (Inno Setup offline): **DUY NHẤT 1
+  FILE** `dist/LuaS30IDE-Setup-1.0.1.exe` — 511.012.892 byte (~487,3 MB),
+  compile 493,2 s, cài wizard hoặc im lặng `/SILENT`.
+- Build đóng gói được chạy LẠI trên HEAD sau khi rebase các PR remote vừa
+  merge (template DoodleQuest + selector template dự án + AI assistant
+  refresh); trước khi đóng gói, `studio_theme_check.py`,
+  `validate_about_credits.py` và `validate_ai_assistant_ui_refresh.py` đều
+  PASS trên tree đã merge.
+- SHA-256: `02f4eb591eb9582902dca7a04f9a40db766f5da91b85074f1926ee7b8e56690b`
   (sidecar `LuaS30IDE-Setup-1.0.1.exe.sha256` cạnh tệp).
