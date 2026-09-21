@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import html
+import re
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -27,6 +29,7 @@ from app.services.ai_design_tool_service import AIDesignToolService
 from app.services.codebase_context_service import CodebaseContextService
 from app.ui import palette
 from app.ui.icons import apply_icon, font_icon
+from app.views.ai_chat_render import TranscriptHtmlRenderer
 from app.views.ai_provider_dialog import AIProviderDialog
 
 
@@ -132,10 +135,15 @@ class ChatPromptEditor(QPlainTextEdit):
         super().__init__(parent)
         self.setObjectName("AIChatPrompt")
         self.setPlaceholderText("Mô tả những gì bạn muốn xây dựng...")
-        # Compact but comfortable composer: enough room for a short coding prompt
-        # without stealing space from the transcript.
-        self.setMinimumHeight(70)
-        self.setMaximumHeight(132)
+        # PROMPT composer: min 86px, tự nới tới 180px khi gõ nhiều dòng rồi cuộn.
+        self.setMinimumHeight(86)
+        self.setMaximumHeight(180)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.document().setDocumentMargin(2)
+        self._growing = False
+        self.document().documentLayout().documentSizeChanged.connect(
+            lambda _size: self._auto_grow()
+        )
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -143,6 +151,19 @@ class ChatPromptEditor(QPlainTextEdit):
                 self.submit_requested.emit()
                 return
         super().keyPressEvent(event)
+
+    def _auto_grow(self) -> None:
+        if self._growing:
+            return
+        self._growing = True
+        try:
+            doc_h = int(self.document().size().height())
+            pad = 32  # padding QSS (14+14) + viền 2 + biên độ chữ
+            wanted = max(self.minimumHeight(), min(self.maximumHeight(), doc_h + pad))
+            self.setFixedHeight(wanted)
+            self.setMinimumHeight(86)  # giữ sàn 86 khi nội dung ngắn lại
+        finally:
+            self._growing = False
 
 
 class AIActivityView(QPlainTextEdit):
@@ -156,7 +177,7 @@ class AIActivityView(QPlainTextEdit):
         "success": palette.GREEN_LIGHT,
         "warning": palette.AMBER,
         "error": palette.RED,
-        "dim": palette.TEXT_4,
+        "dim": palette.CHAT_TEXT_4,
     }
 
     def __init__(self, parent=None) -> None:
@@ -178,7 +199,7 @@ class AIActivityView(QPlainTextEdit):
         label_fmt.setForeground(QColor(self.COLORS.get(tone, self.COLORS["dim"])))
         label_fmt.setFontWeight(600)
         text_fmt = QTextCharFormat()
-        text_fmt.setForeground(QColor(palette.TEXT_3))
+        text_fmt.setForeground(QColor(palette.CHAT_TEXT_3))
         cursor.insertText(f"{label}: ", label_fmt)
         cursor.insertText(value + "\n", text_fmt)
         self.setTextCursor(cursor)
@@ -226,6 +247,12 @@ class AIChatView(QWidget):
         # Thẻ "lỗi cần sửa" kiểu Antigravity: mỗi mục bấm được để mở đúng file:dòng.
         self._problem_blocks: dict[str, dict] = {}
         self._problem_seq = 0
+        # Khối code render trong transcript: id -> nguyên văn để nút "Sao chép" lấy.
+        # (Dict sống chung với renderer; không được gán lại, chỉ reset qua renderer.)
+        self._chat_html = TranscriptHtmlRenderer()
+        self._copy_blocks = self._chat_html.copy_blocks
+        # Một thẻ sống duy nhất cập nhật realtime theo trạng thái PROBLEMS.
+        self._live_problem_card = ""
         # Braille spinner (U+280B..U+2814) dựng bằng code điểm để tránh lỗi font/encoding.
         self._think_frames = tuple(chr(c) for c in range(0x280B, 0x2815))
         self._think_index = 0
@@ -250,8 +277,8 @@ class AIChatView(QWidget):
         self.tool_service = AIReadOnlyToolService(engine_root=self.engine_root)
         self.design_tool_service = AIDesignToolService()
         self.context_service = CodebaseContextService(self.engine_root)
-        self.setMinimumWidth(340)
-        self.setMaximumWidth(720)
+        self.setMinimumWidth(315)
+        self.setMaximumWidth(680)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -260,13 +287,13 @@ class AIChatView(QWidget):
         header = QFrame()
         header.setObjectName("AIChatHeader")
         row = QHBoxLayout(header)
-        row.setContentsMargins(14, 9, 10, 9)
+        row.setContentsMargins(12, 8, 12, 8)
         row.setSpacing(6)
         title_icon = QLabel()
         title_icon.setObjectName("AIChatHeaderIcon")
-        title_icon.setPixmap(font_icon("spark", 16, normal="palette.ACCENT").pixmap(16, 16))
+        title_icon.setPixmap(font_icon("spark", 18, normal="palette.CHAT_ACCENT").pixmap(18, 18))
         row.addWidget(title_icon)
-        row.addSpacing(4)
+        row.addSpacing(6)
         title = QLabel("AI Trợ lý")
         title.setObjectName("AIChatTitle")
         row.addWidget(title)
@@ -274,7 +301,7 @@ class AIChatView(QWidget):
 
         self.activity_button = QToolButton()
         self.activity_button.setObjectName("AIChatToolButton")
-        apply_icon(self.activity_button, "spark", 14)
+        apply_icon(self.activity_button, "spark", 18)
         self.activity_button.setCheckable(True)
         self.activity_button.setChecked(bool(self.config.show_reasoning))
         self.activity_button.setToolTip(
@@ -284,28 +311,28 @@ class AIChatView(QWidget):
 
         self.sessions_button = QToolButton()
         self.sessions_button.setObjectName("AIChatToolButton")
-        apply_icon(self.sessions_button, "projects", 14)
+        apply_icon(self.sessions_button, "projects", 18)
         self.sessions_button.setToolTip("Chat sessions · /sessions")
         self.sessions_button.clicked.connect(self._show_sessions_menu)
         row.addWidget(self.sessions_button)
 
         clear_button = QToolButton()
         clear_button.setObjectName("AIChatToolButton")
-        apply_icon(clear_button, "new_file", 14)
+        apply_icon(clear_button, "new_file", 18)
         clear_button.setToolTip("Cuộc trò chuyện mới")
         clear_button.clicked.connect(self.clear_chat)
         row.addWidget(clear_button)
 
         self.config_button = QToolButton()
         self.config_button.setObjectName("AIChatToolButton")
-        apply_icon(self.config_button, "settings", 14)
+        apply_icon(self.config_button, "settings", 18)
         self.config_button.setToolTip("Cài đặt nhà cung cấp AI")
         self.config_button.clicked.connect(self.open_provider_settings)
         row.addWidget(self.config_button)
 
         close_button = QToolButton()
         close_button.setObjectName("AIChatToolButton")
-        apply_icon(close_button, "close", 14)
+        apply_icon(close_button, "close", 18)
         close_button.setToolTip("Đóng Chat AI")
         close_button.clicked.connect(lambda: self.visibility_requested.emit(False))
         row.addWidget(close_button)
@@ -341,11 +368,11 @@ class AIChatView(QWidget):
         activity_layout.setContentsMargins(7, 5, 7, 5)
         activity_layout.setSpacing(4)
         activity_header = QHBoxLayout()
-        activity_title = QLabel("HOẠT ĐỘNG AGENT")
+        activity_title = QLabel("AI ACTIVITY · REASONING SUMMARY")
         activity_title.setObjectName("AIActivityTitle")
         activity_header.addWidget(activity_title)
         activity_header.addStretch(1)
-        activity_note = QLabel("tóm tắt · không hiển thị suy luận riêng tư")
+        activity_note = QLabel("high-level only")
         activity_note.setObjectName("AIActivityNote")
         activity_header.addWidget(activity_note)
         activity_layout.addLayout(activity_header)
@@ -357,7 +384,18 @@ class AIChatView(QWidget):
         self.transcript.setObjectName("AIChatTranscript")
         self.transcript.setOpenExternalLinks(False)
         self.transcript.setOpenLinks(False)
+        # Viền trong rộng để cột tin nhắn có khoảng thở như vùng chat Codex,
+        # thay vì chữ bám sát mép trái của dock.
+        self.transcript.document().setDocumentMargin(12)
         self.transcript.anchorClicked.connect(self._on_transcript_anchor)
+        # Khi agent thêm tin mới mà người dùng đang cuộn lên đọc tin cũ, KHÔNG
+        # ép nhảy xuống đáy — nổi nút "↓ Tin nhắn mới" trên transcript (PROMPT §22).
+        self.new_message_button = QPushButton("↓ Tin nhắn mới", self.transcript)
+        self.new_message_button.setObjectName("AIChatNewMsg")
+        self.new_message_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.new_message_button.clicked.connect(lambda: self._tail_transcript(force=True))
+        self.new_message_button.hide()
+        self.transcript.verticalScrollBar().valueChanged.connect(self._on_transcript_scrolled)
 
         self.changes_card = QFrame()
         self.changes_card.setObjectName("AIChangesCard")
@@ -469,7 +507,7 @@ class AIChatView(QWidget):
         avatar.setObjectName("AIWelcomeAvatar")
         avatar.setFixedSize(24, 24)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        avatar.setPixmap(font_icon("robot", 14, normal="palette.ON_ACCENT").pixmap(14, 14))
+        avatar.setPixmap(font_icon("robot", 14, normal="palette.CHAT_ON_ACCENT").pixmap(14, 14))
         welcome_row.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
         welcome_col = QVBoxLayout()
         welcome_col.setContentsMargins(0, 0, 0, 0)
@@ -565,12 +603,12 @@ class AIChatView(QWidget):
         context_card = QFrame()
         context_card.setObjectName("AIContextCard")
         context_card_layout = QVBoxLayout(context_card)
-        context_card_layout.setContentsMargins(12, 8, 12, 8)
-        context_card_layout.setSpacing(6)
+        context_card_layout.setContentsMargins(10, 6, 10, 6)
+        context_card_layout.setSpacing(4)
         context_head = QHBoxLayout()
         context_head.setSpacing(5)
         context_icon = QLabel()
-        context_icon.setPixmap(font_icon("folder", 12, normal="palette.TEXT_4").pixmap(12, 12))
+        context_icon.setPixmap(font_icon("folder", 12, normal="palette.CHAT_ACCENT").pixmap(12, 12))
         context_head.addWidget(context_icon)
         context_title = QLabel("Ngữ cảnh")
         context_title.setObjectName("AIContextCardTitle")
@@ -601,48 +639,48 @@ class AIChatView(QWidget):
         composer = QFrame()
         composer.setObjectName("AIChatComposer")
         compose = QVBoxLayout(composer)
-        compose.setContentsMargins(12, 9, 12, 9)
+        compose.setContentsMargins(12, 10, 12, 10)
         compose.setSpacing(7)
 
         self.prompt = ChatPromptEditor()
         self.prompt.submit_requested.connect(self.send)
         compose.addWidget(self.prompt)
 
-        # Lightweight prompt toolbar. It keeps context/file actions close to the
-        # editor while leaving access/model controls on their own row.
-        prompt_tools = QHBoxLayout()
-        prompt_tools.setSpacing(5)
+        # Hàng công cụ soạn thảo: đính kèm · @ ngữ cảnh · {} khối code + gợi ý phím.
+        tools_row = QHBoxLayout()
+        tools_row.setSpacing(2)
         attach_button = QToolButton()
-        attach_button.setObjectName("AIComposerToolButton")
+        attach_button.setObjectName("AIChatToolButton")
         apply_icon(attach_button, "connect", 14)
         attach_button.setToolTip("Đính kèm tệp đang mở vào câu hỏi")
         attach_button.clicked.connect(self._attach_active_file)
-        prompt_tools.addWidget(attach_button)
+        tools_row.addWidget(attach_button)
 
-        mention_button = QToolButton()
-        mention_button.setObjectName("AIComposerTextTool")
-        mention_button.setText("@")
-        mention_button.setToolTip("Chèn ký hiệu tham chiếu tệp / ngữ cảnh")
-        mention_button.clicked.connect(lambda: self.prompt.insertPlainText("@"))
-        prompt_tools.addWidget(mention_button)
+        at_button = QToolButton()
+        at_button.setObjectName("AIChatToolButton")
+        apply_icon(at_button, "file", 14)
+        at_button.setToolTip("Thêm tệp đang mở làm ngữ cảnh (@)")
+        at_button.clicked.connect(self._attach_active_file)
+        tools_row.addWidget(at_button)
 
         code_button = QToolButton()
-        code_button.setObjectName("AIComposerTextTool")
-        code_button.setText("{ }")
-        code_button.setToolTip("Chèn khối code Lua")
+        code_button.setObjectName("AIChatToolButton")
+        apply_icon(code_button, "code", 14)
+        code_button.setToolTip("Chèn một khối code mẫu vào câu hỏi")
         code_button.clicked.connect(
-            lambda: self.prompt.insertPlainText("```lua" + chr(10) + chr(10) + "```")
+            lambda: self.prompt.insertPlainText("\n```\n\n```\n")
         )
-        prompt_tools.addWidget(code_button)
+        tools_row.addWidget(code_button)
 
-        prompt_tools.addStretch(1)
+        tools_row.addStretch(1)
         composer_hint = QLabel("Shift + Enter để xuống dòng")
-        composer_hint.setObjectName("AIComposerHint")
-        prompt_tools.addWidget(composer_hint)
-        compose.addLayout(prompt_tools)
+        composer_hint.setObjectName("AIChatHint")
+        tools_row.addWidget(composer_hint)
+        compose.addLayout(tools_row)
 
-        controls = QHBoxLayout()
-        controls.setSpacing(6)
+        # Hàng điều khiển: chế độ truy cập · model · nút gửi.
+        footer = QHBoxLayout()
+        footer.setSpacing(6)
 
         self._access_mode = "edit_auto"
         self._access_rows: dict[str, AccessModeOption] = {}
@@ -654,7 +692,7 @@ class AIChatView(QWidget):
             "Plan mode: no edits/shell. Full access: automatically use tools, edit files and run terminal commands without confirmation."
         )
         self.access_mode_button.clicked.connect(self._show_access_mode_menu)
-        controls.addWidget(self.access_mode_button)
+        footer.addWidget(self.access_mode_button)
 
         self.access_mode_menu = QMenu(self)
         self.access_mode_menu.setObjectName("AIAccessMenu")
@@ -671,39 +709,51 @@ class AIChatView(QWidget):
             self._access_rows[mode_value] = option
         self._sync_access_mode_ui()
 
+        footer.addStretch(1)
+
         self.provider_label = QPushButton("")
         self.provider_label.setObjectName("AIProviderCompact")
         self.provider_label.clicked.connect(self.open_provider_settings)
-        controls.addWidget(self.provider_label, 1)
+        footer.addWidget(self.provider_label)
 
         self.send_button = QPushButton("Gửi")
         self.send_button.setObjectName("AIChatSendIcon")
         self.send_button.setToolTip("Gửi")
         self.send_button.setProperty("running", False)
-        apply_icon(self.send_button, "send", 14, "palette.ON_ACCENT")
+        apply_icon(self.send_button, "send", 14, "palette.CHAT_ON_ACCENT")
         self.send_button.clicked.connect(self._send_or_stop)
-        controls.addWidget(self.send_button)
-        compose.addLayout(controls)
+        footer.addWidget(self.send_button)
+        compose.addLayout(footer)
 
-        status_row = QHBoxLayout()
-        status_row.setSpacing(5)
-        status_dot = QLabel("●")
-        status_dot.setObjectName("AIStatusDot")
-        status_row.addWidget(status_dot)
+        root.addWidget(composer)
+
+        # Thanh trạng thái dưới cùng: chấm xanh + 'Ready' · dòng giới thiệu.
+        status_bar = QFrame()
+        status_bar.setObjectName("AIChatStatusBar")
+        status_row = QHBoxLayout(status_bar)
+        status_row.setContentsMargins(12, 5, 12, 5)
+        status_row.setSpacing(6)
+        self.status_dot = QLabel("●")
+        self.status_dot.setObjectName("AIChatStatusDot")
+        status_row.addWidget(self.status_dot)
         self.status = QLabel("Ready")
         self.status.setObjectName("AIChatStatus")
         status_row.addWidget(self.status)
         status_row.addStretch(1)
-        status_hint = QLabel("AI hỗ trợ lập trình LuaS30")
-        status_hint.setObjectName("AIStatusHint")
-        status_row.addWidget(status_hint)
-        compose.addLayout(status_row)
-        root.addWidget(composer)
+        tagline = QLabel("Hỗ trợ lập trình tốt hơn mỗi ngày")
+        tagline.setObjectName("AIChatTagline")
+        status_row.addWidget(tagline)
+        heart = QLabel("♥")
+        heart.setObjectName("AIChatHeart")
+        status_row.addWidget(heart)
+        root.addWidget(status_bar)
 
         self.activity_button.toggled.connect(self._on_activity_toggled)
+        self.prompt.textChanged.connect(self._sync_send_enabled)
         self._select_tab(0)
         self._sync_config_ui()
         self._restore_or_create_session(None)
+        self._sync_send_enabled()
 
         self._context_timer = QTimer(self)
         self._context_timer.setInterval(1500)
@@ -714,6 +764,87 @@ class AIChatView(QWidget):
         self.pages.setCurrentIndex(index)
         for position, button in enumerate(self._tab_buttons):
             button.setChecked(position == index)
+
+    # ------------------------------------------------- UI helpers theo PROMPT "Modern Dark"
+    def _near_transcript_bottom(self) -> bool:
+        bar = self.transcript.verticalScrollBar()
+        return bar.maximum() - bar.value() <= 80
+
+    def _tail_transcript(self, force: bool = False) -> None:
+        """Cuộn xuống đáy CHỈ khi người dùng đang ở gần đáy; nếu không, nổi
+        nút '↓ Tin nhắn mới' thay vì giật con mắt khi agent stream tin."""
+        bar = self.transcript.verticalScrollBar()
+        if force or self._near_transcript_bottom():
+            bar.setValue(bar.maximum())
+            self.new_message_button.hide()
+        else:
+            self.new_message_button.show()
+            self._place_new_message_button()
+
+    def _place_new_message_button(self) -> None:
+        hint = self.new_message_button.sizeHint()
+        viewport_w = max(1, self.transcript.viewport().width())
+        self.new_message_button.move(
+            (viewport_w - hint.width()) // 2,
+            max(4, self.transcript.height() - hint.height() - 12),
+        )
+
+    def _on_transcript_scrolled(self, _value: int) -> None:
+        if self._near_transcript_bottom():
+            self.new_message_button.hide()
+
+    def _set_status_state(self, state: str) -> None:
+        self.status_dot.setProperty("state", state)
+        self.status_dot.style().unpolish(self.status_dot)
+        self.status_dot.style().polish(self.status_dot)
+        self.status_dot.update()
+
+    def _sync_send_enabled(self) -> None:
+        # PROMPT §13: chưa nhập prompt -> nút Gửi disabled; khi agent chạy thì
+        # nút luôn bật (vai trò Dừng).
+        if self._agent_active:
+            self.send_button.setEnabled(True)
+        else:
+            self.send_button.setEnabled(bool(self.prompt.toPlainText().strip()))
+
+    def _sync_responsive(self) -> None:
+        # PROMPT §17: panel hẹp -> 'Gửi/Dừng' còn icon, tên model dùng ellipsis.
+        if not hasattr(self, "new_message_button"):
+            return
+        narrow = self.width() < 430
+        if self._agent_active:
+            label, tip = ("" if narrow else "Dừng"), "Stop AI"
+        else:
+            label, tip = ("" if narrow else "Gửi"), "Gửi"
+        if self.send_button.text() != label:
+            self.send_button.setText(label)
+        self.send_button.setToolTip(tip)
+        metrics = self.provider_label.fontMetrics()
+        reserved = (
+            self.access_mode_button.sizeHint().width()
+            + self.send_button.sizeHint().width()
+            + 70
+        )
+        allowed = max(90, self.width() - reserved)
+        self.provider_label.setText(
+            metrics.elidedText(
+                f"{self.config.model}  ▾", Qt.TextElideMode.ElideRight, allowed
+            )
+        )
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001 - Qt hook
+        self._sync_responsive()
+        if hasattr(self, "new_message_button") and self.new_message_button.isVisible():
+            self._place_new_message_button()
+        super().resizeEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        # PROMPT §21: Esc dừng sinh nội dung khi agent đang chạy.
+        if event.key() == Qt.Key.Key_Escape and self._agent_active:
+            self.stop_agent()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _on_activity_toggled(self, checked: bool) -> None:
         self.activity_frame.setVisible(checked)
@@ -767,6 +898,9 @@ class AIChatView(QWidget):
 
     def _render_history(self) -> None:
         self.transcript.clear()
+        # Render lại toàn bộ -> cấp số id khối code từ đầu để nút "Sao chép" khớp.
+        self._chat_html.reset()
+        self._copy_blocks = self._chat_html.copy_blocks
         visible = 0
         for item in self._history:
             role = str(item.get("role") or "")
@@ -798,12 +932,15 @@ class AIChatView(QWidget):
                 continue
             if role not in {"user", "assistant"}:
                 continue
-            self._append_message(role, str(item.get("content") or ""))
+            self._append_message(
+                role, str(item.get("content") or ""), when=str(item.get("time") or "")
+            )
             visible += 1
         if not visible:
             self._welcome()
         self.start_frame.setVisible(visible == 0)
         self.transcript.setVisible(visible > 0)
+        self._tail_transcript(force=True)
         self.context_values["session"].setText(self._session_title or "New session")
         self.sessions_button.setToolTip(
             f"Chat sessions · {self._session_title or 'New session'} · /sessions"
@@ -869,6 +1006,7 @@ class AIChatView(QWidget):
         self._step_seq = 0
         self._problem_blocks.clear()
         self._problem_seq = 0
+        self._live_problem_card = ""
         self.status_message.emit("Started new ChatAI session")
 
     def clear_chat(self) -> None:
@@ -1080,7 +1218,8 @@ class AIChatView(QWidget):
 
     def _sync_config_ui(self) -> None:
         label = PROVIDER_DEFAULTS.get(self.config.provider, {}).get("label", self.config.provider)
-        self.provider_label.setText(f"{self.config.model}  ▾")
+        # Tên model + nhãn Gửi/Dừng co giãn theo bề rộng panel (PROMPT §12/§17).
+        self._sync_responsive()
         self.provider_label.setToolTip(
             self.config.base_url
             + (f"\nAPI key: saved in {self.credential_store.path}" if self.credential_store.has_key(self.config.provider) else "\nAPI key: session/environment")
@@ -1210,6 +1349,14 @@ class AIChatView(QWidget):
             if step is not None:
                 step["expanded"] = not bool(step.get("expanded"))
                 self._render_history()
+        elif kind == "copy":
+            code = self._copy_blocks.get(card_id)
+            if code is not None:
+                from PySide6.QtWidgets import QApplication
+
+                QApplication.clipboard().setText(code)
+                self.status_message.emit("Đã sao chép code vào clipboard")
+            return
         elif kind == "openfile":
             pb_id, _, idx = card_id.partition(":")
             block = self._problem_blocks.get(pb_id) or {}
@@ -1237,7 +1384,7 @@ class AIChatView(QWidget):
             rows.append(
                 "<tr>"
                 f'<td width="20" style="color:{palette.GREEN_LIGHT};">+</td>'
-                f'<td style="color:{palette.TEXT_2};">{html.escape(str(path))}</td>'
+                f'<td style="color:{palette.CHAT_TEXT_2};">{html.escape(str(path))}</td>'
                 f'<td align="right" width="96">'
                 f'<span style="color:{palette.GREEN_LIGHT};">+{int(added)}</span>'
                 f'&nbsp;<span style="color:{palette.RED};">-{int(removed)}</span>'
@@ -1247,25 +1394,25 @@ class AIChatView(QWidget):
             rows.append(
                 "<tr><td></td>"
                 f'<td colspan="2"><a href="x-luas30://more/{card_id}" '
-                f'style="color:{palette.TEXT_3};">Hiển thị thêm {len(files) - len(shown)} tệp</a></td></tr>'
+                f'style="color:{palette.CHAT_TEXT_3};">Hiển thị thêm {len(files) - len(shown)} tệp</a></td></tr>'
             )
         elif expanded and len(files) > self.CARD_VISIBLE_FILES:
             rows.append(
                 "<tr><td></td>"
                 f'<td colspan="2"><a href="x-luas30://more/{card_id}" '
-                f'style="color:{palette.TEXT_3};">Thu gọn danh sách</a></td></tr>'
+                f'style="color:{palette.CHAT_TEXT_3};">Thu gọn danh sách</a></td></tr>'
             )
         return (
             '<div style="margin-top:8px;">'
             '<table width="100%" cellspacing="0" cellpadding="5" style="'
-            f"background-color:{palette.BG_RAISED};"
-            f"border:1px solid {palette.BORDER_STRONG};\">"
+            f"background-color:{palette.CHAT_SURFACE};"
+            f"border:1px solid {palette.CHAT_BORDER};\">"
             "<tr>"
-            f'<td colspan="2"><b style="color:{palette.TEXT};">Đã sửa {len(files)} tệp</b><br>'
+            f'<td colspan="2"><b style="color:{palette.CHAT_TEXT};">Đã sửa {len(files)} tệp</b><br>'
             f'<span style="color:{palette.GREEN_LIGHT};">+{total_added}</span> '
             f'<span style="color:{palette.RED};">-{total_removed}</span></td>'
             f'<td align="right"><a href="x-luas30://review/{card_id}" '
-            f'style="color:{palette.TEXT};">Review</a></td>'
+            f'style="color:{palette.CHAT_TEXT};">Review</a></td>'
             "</tr>"
             + "".join(rows)
             + "</table></div>"
@@ -1275,8 +1422,7 @@ class AIChatView(QWidget):
         cursor = self.transcript.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         cursor.insertHtml(self._change_card_html(card_id))
-        self.transcript.setTextCursor(cursor)
-        self.transcript.ensureCursorVisible()
+        self._tail_transcript()
 
     # ------------------------------------------------- hiệu ứng suy luận agent
     THINK_PHASES = {
@@ -1313,8 +1459,7 @@ class AIChatView(QWidget):
         cursor = self.transcript.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         cursor.insertHtml(self._step_block_html(step_id))
-        self.transcript.setTextCursor(cursor)
-        self.transcript.ensureCursorVisible()
+        self._tail_transcript()
 
     def _step_block_html(self, step_id: str) -> str:
         step = self._step_blocks.get(step_id) or {}
@@ -1323,7 +1468,7 @@ class AIChatView(QWidget):
         chevron = "▾" if expanded else "▸"
         header = (
             f'<a href="x-luas30://step/{step_id}" '
-            f'style="color:{palette.TEXT_2};text-decoration:none;">'
+            f'style="color:{palette.CHAT_TEXT_2};text-decoration:none;">'
             f'{chevron} Đã chạy {len(tools)} công cụ</a>'
         )
         detail = ""
@@ -1336,9 +1481,9 @@ class AIChatView(QWidget):
                     note = note[:120] + "…"
                 rows.append(
                     "<tr>"
-                    f'<td width="18" style="color:{palette.ACCENT};">•</td>'
+                    f'<td width="18" style="color:{palette.CHAT_ACCENT};">•</td>'
                     f'<td style="color:{palette.SYN_FUNC};">{label}</td>'
-                    f'<td style="color:{palette.TEXT_3};">{note}</td>'
+                    f'<td style="color:{palette.CHAT_TEXT_3};">{note}</td>'
                     "</tr>"
                 )
             detail = (
@@ -1347,38 +1492,80 @@ class AIChatView(QWidget):
             )
         return (
             '<div style="margin:6px 0 2px 0;">'
-            f'<span style="color:{palette.TEXT_4};">{header}</span>{detail}<br></div>'
+            f'<span style="color:{palette.CHAT_TEXT_4};">{header}</span>{detail}<br></div>'
         )
 
-    def _append_message(self, role: str, text: str) -> None:
+    # Bề rộng tối đa của cột nội dung tin nhắn, mô phỏng vùng chat căn giữa
+    # kiểu Codex/DuckChat thay vì kéo giãn hết chiều ngang dock hẹp.
+    MESSAGE_COLUMN_PCT = 94
+
+    def _render_markdown(self, text: str) -> str:
+        """Markdown tối giản cho transcript — delegate sang
+        `ai_chat_render.TranscriptHtmlRenderer` (tách component theo PROMPT)."""
+        return self._chat_html.render_markdown(text)
+
+    def _append_message(self, role: str, text: str, when: str = "") -> None:
         if role == "user":
             self.start_frame.setVisible(False)
             self.transcript.setVisible(True)
-
-        is_user = role == "user"
-        label = "Bạn" if is_user else "AI Trợ lý"
-        marker = "B" if is_user else "✦"
-        accent = palette.TEXT_3 if is_user else palette.ACCENT
-        card_bg = palette.BG_RAISED if is_user else palette.BG_ALT
-        escaped = html.escape(str(text or "")).replace("\n", "<br>")
-
-        # QTextBrowser gives us selectable text and lightweight rich cards
-        # without introducing a widget-per-message performance cost.
+        raw = str(text or "")
+        body = (
+            html.escape(raw).replace("\n", "<br>")
+            if role == "user"
+            else self._chat_html.render_markdown(raw)
+        )
+        # Thẻ = avatar tròn + tên + timestamp góc phải + nội dung. QTextBrowser
+        # bỏ qua border-radius trong HTML nên góc vuông; viền + nền surface vẫn
+        # đọc thành thẻ kiểu AI Assistant.
         card = (
+            '<div style="margin:12px 0 0 0;">'
             '<table width="100%" cellspacing="0" cellpadding="0" style="'
-            f'background-color:{card_bg};border:1px solid {palette.BORDER_STRONG};">'
-            '<tr><td style="padding:9px 10px 5px 10px;">'
-            f'<span style="color:{accent};font-weight:700;">{marker}&nbsp;&nbsp;{label}</span>'
-            '</td></tr>'
-            '<tr><td style="padding:0 10px 10px 10px;'
-            f'color:{palette.TEXT_2};line-height:1.45;">{escaped}</td></tr>'
-            '</table><div style="height:7px;"></div>'
+            f'border:1px solid {palette.CHAT_BORDER};background-color:{palette.CHAT_SURFACE};"><tr>'
+            f'<td valign="top" width="46" style="padding:12px 0 12px 12px;">'
+            f"{self._chat_html.avatar_html(role)}</td>"
+            '<td valign="top" style="padding:12px 14px 12px 6px;">'
+            f"{self._chat_html.head_html(role, when)}"
+            '<div style="height:5px;"></div>'
+            f'<div style="color:{palette.CHAT_TEXT_2};font-size:13px;">{body}</div>'
+            "</td></tr></table></div>"
         )
         cursor = self.transcript.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertHtml(card)
-        self.transcript.setTextCursor(cursor)
-        self.transcript.ensureCursorVisible()
+        cursor.insertHtml(card + "<br>")
+        # KHÔNG setTextCursor/ensureCursorVisible: sẽ ép nhảy đáy ngay cả khi
+        # người dùng đang cuộn lên đọc tin cũ.
+        self._tail_transcript()
+
+    def append_code_diff(self, rel_path: str, unified: str, max_lines: int = 150) -> None:
+        """Hien diff kieu Codex trong transcript sau khi ghi file vao codebase."""
+        self.start_frame.setVisible(False)
+        self.transcript.setVisible(True)
+        lines = str(unified or "").splitlines()
+        total = len(lines)
+        rows: list[str] = []
+        for line in lines[:max(1, int(max_lines))]:
+            esc = html.escape(line) if line else " "
+            if line.startswith("+") and not line.startswith("+++"):
+                rows.append(f'<div style="color:{palette.GREEN_LIGHT};">{esc}</div>')
+            elif line.startswith("-") and not line.startswith("---"):
+                rows.append(f'<div style="color:{palette.RED_LIGHT};">{esc}</div>')
+            elif line.startswith("@@"):
+                rows.append(f'<div style="color:{palette.INFO};"><b>{esc}</b></div>')
+            else:
+                rows.append(f'<div style="color:{palette.CHAT_TEXT_4};">{esc}</div>')
+        if total > len(rows):
+            rows.append(
+                f'<div style="color:{palette.CHAT_TEXT_4};">… {total - len(rows)} more lines</div>')
+        cursor = self.transcript.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertHtml(
+            '<div style="margin:6px 0 2px 0;"><b>AI</b> · '
+            f'<span style="color:{palette.SYN_FUNC};">{html.escape(str(rel_path))}</span></div>'
+            '<pre style="font-family:\'JetBrains Mono\',\'Cascadia Code\',Consolas,monospace;'
+            'font-size:12px;">'
+            + "".join(rows) + "</pre><br>"
+        )
+        self._tail_transcript()
 
     def _append_error_line(self, text: str) -> None:
         """Một DÒNG LỖI đỏ trong transcript — kết nối/thực thi thất bại hoặc áp
@@ -1393,8 +1580,7 @@ class AIChatView(QWidget):
         cursor.insertHtml(
             f'<div style="color:{palette.RED};"><b>Lỗi</b><br>{body}</div><br>'
         )
-        self.transcript.setTextCursor(cursor)
-        self.transcript.ensureCursorVisible()
+        self._tail_transcript()
 
     def _shell_policy(self) -> str:
         if not self.config.enable_shell:
@@ -1481,17 +1667,21 @@ class AIChatView(QWidget):
         self.send_button.update()
         if self._agent_active:
             apply_icon(self.send_button, "stop", 13)
-            self.send_button.setText("Dừng")
-            self.send_button.setToolTip("Dừng AI")
+            self.send_button.setToolTip("Stop AI")
             self.thinking_frame.setVisible(True)
             self._tick_thinking()
             self._think_timer.start()
+            self._set_status_state("busy")
         else:
-            apply_icon(self.send_button, "send", 14, "palette.ON_ACCENT")
-            self.send_button.setText("Gửi")
-            self.send_button.setToolTip("Gửi")
+            apply_icon(self.send_button, "send", 14, "palette.CHAT_ON_ACCENT")
+            self.send_button.setToolTip("Send")
             self._think_timer.stop()
             self.thinking_frame.setVisible(False)
+            self._set_status_state("ready")
+        # Nhãn 'Gửi'/'Dừng' (rút còn icon khi panel hẹp) qua _sync_responsive
+        # để composer và responsive dùng chung một nguồn chân lý.
+        self._sync_responsive()
+        self._sync_send_enabled()
 
     def _send_or_stop(self) -> None:
         if self._agent_active:
@@ -1585,8 +1775,10 @@ class AIChatView(QWidget):
         self._pending_edits = ()
         self.shell_card.hide()
         self.changes_card.hide()
-        self._append_message("user", question)
-        self._history.append({"role": "user", "content": question})
+        self._append_message("user", question, when=time.strftime("%H:%M"))
+        self._history.append(
+            {"role": "user", "content": question, "time": time.strftime("%H:%M")}
+        )
         self._persist_session()
         self._start_request(question)
 
@@ -1667,9 +1859,12 @@ class AIChatView(QWidget):
             allow_plain_code_edit=self._edit_policy() != "disabled",
         )
         if parsed.recovered_plain_edit:
+            recovered_paths = ", ".join(
+                str(edit.path) for edit in parsed.code_edits[:6]
+            ) or (relative_active or "tệp đang mở")
             self.activity.add(
                 "Code recovery",
-                f"Converted plain generated code into an edit for {relative_active}.",
+                f"Đã chuyển code sinh trong chat thành thay đổi cho: {recovered_paths}.",
                 "edit",
             )
 
@@ -1677,8 +1872,11 @@ class AIChatView(QWidget):
             self.activity.add("Reasoning summary", parsed.reasoning_summary, "summary")
 
         if parsed.visible_text:
-            self._append_message("assistant", parsed.visible_text)
-            self._history.append({"role": "assistant", "content": parsed.visible_text})
+            stamp = time.strftime("%H:%M")
+            self._append_message("assistant", parsed.visible_text, when=stamp)
+            self._history.append(
+                {"role": "assistant", "content": parsed.visible_text, "time": stamp}
+            )
         else:
             self._history.append(
                 {"role": "assistant", "content": "Requested a tool action.", "_internal": True}
@@ -1782,6 +1980,7 @@ class AIChatView(QWidget):
         paths: list[str],
         backup: str = "",
         files: list | None = None,
+        diffs: dict | None = None,
     ) -> None:
         self._pending_edits = ()
         self.changes_card.hide()
@@ -1806,6 +2005,18 @@ class AIChatView(QWidget):
         self.start_frame.setVisible(False)
         self.transcript.setVisible(True)
         self._insert_change_card(card_id)
+        shown = 0
+        for path in paths:
+            if shown >= 4:
+                break
+            text = (diffs or {}).get(path) if isinstance(diffs, dict) else None
+            if text:
+                self.append_code_diff(path, text)
+                shown += 1
+        if isinstance(diffs, dict) and len(paths) > shown:
+            self._append_message(
+                "assistant",
+                f"... và {len(paths) - shown} file khác đã ghi (xem tab AI Changes).")
         self._history.append(
             {
                 "role": "user",
@@ -1913,8 +2124,9 @@ class AIChatView(QWidget):
         )
         if tool == "problems" and tone == "success":
             # Antigravity-style: biến bảng PROBLEMS thành thẻ lỗi bấm-để-mở trong
-            # transcript (không auto-mở khi agent chỉ đang tự kiểm tra giữa lượt).
-            self._insert_problem_card(self._error_rows())
+            # transcript. Dùng thẻ SỐNG để nó cập nhật realtime, không auto-mở khi
+            # agent chỉ đang tự kiểm tra giữa lượt.
+            self.refresh_problem_card()
         self._history.append(
             {
                 "role": "user",
@@ -1969,76 +2181,182 @@ class AIChatView(QWidget):
             pass
         return Path(str(path)).name
 
-    def _insert_problem_card(self, rows: list[tuple], *, auto_open: bool = False) -> str:
-        """Chèn thẻ 'N lỗi cần sửa' với MỖI dòng là link mở đúng file:dòng.
+    def _problem_row_sig(self, row: tuple) -> str:
+        """Chữ ký ổn định của một mục PROBLEM: severity + đường dẫn tương đối +
+        thông điệp chuẩn hoá. KHÔNG dùng số dòng vì nó nhảy khi sửa code."""
+        try:
+            sev, path, _line, _column, message = row
+        except (ValueError, TypeError):
+            return str(row)
+        msg = " ".join(str(message or "").split()).lower()
+        return f"{str(sev or '').lower()}|{self._rel_shown(path)}|{msg[:200]}"
 
-        Antigravity khi phát hiện lỗi thì nhảy thẳng tới chỗ cần sửa; ở đây thẻ
-        hiện trong transcript và mỗi mục bấm được qua `_open_location_provider`.
-        `auto_open=True` (sau khi áp code) sẽ mở ngay lỗi đầu tiên để người dùng
-        thấy tại sao agent còn việc phải làm.
-        """
+    def has_problem_card(self) -> bool:
+        return bool(self._live_problem_card) and self._live_problem_card in self._problem_blocks
+
+    def _open_first_live_problem(self, pb_id: str) -> None:
+        block = self._problem_blocks.get(pb_id) or {}
+        rows = block.get("rows") or []
+        flags = block.get("resolved") or []
+        for idx, row in enumerate(rows):
+            if idx < len(flags) and flags[idx]:
+                continue
+            if self._open_location_provider is not None:
+                try:
+                    _sev, path, line, column, _msg = row
+                    self._open_location_provider(str(path), int(line or 1), int(column or 1))
+                except Exception:
+                    pass
+            break
+
+    def _insert_problem_card(self, rows: list[tuple], *, auto_open: bool = False) -> str:
+        """Tạo thẻ 'N lỗi cần sửa' (mỗi mục bấm mở đúng file:dòng) và đánh dấu nó
+        là THẺ SỐNG để các lần cập nhật sau chỉ cần làm tươi tại chỗ."""
         if not rows:
             return ""
+        shown = [tuple(r) for r in rows[: self.PROBLEM_CARD_LIMIT]]
         self._problem_seq += 1
         pb_id = f"p{self._problem_seq}"
-        self._problem_blocks[pb_id] = {"rows": [tuple(r) for r in rows[: self.PROBLEM_CARD_LIMIT]]}
+        self._problem_blocks[pb_id] = {
+            "rows": shown,
+            "sigs": [self._problem_row_sig(r) for r in shown],
+            "resolved": [False for _ in shown],
+        }
+        self._live_problem_card = pb_id
         self._history.append({"role": "problems", "pb_id": pb_id, "_internal": True})
         self.start_frame.setVisible(False)
         self.transcript.setVisible(True)
         cursor = self.transcript.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         cursor.insertHtml(self._problem_card_html(pb_id))
-        self.transcript.setTextCursor(cursor)
-        self.transcript.ensureCursorVisible()
-        if auto_open and self._open_location_provider is not None:
-            sev, path, line, column, message = rows[0]
-            try:
-                self._open_location_provider(str(path), int(line or 1), int(column or 1))
-            except Exception:
-                pass
+        self._tail_transcript()
+        if auto_open:
+            self._open_first_live_problem(pb_id)
         return pb_id
+
+    def refresh_problem_card(self, *, auto_open: bool = False) -> bool:
+        """Làm tươi THẺ SỐNG theo bảng PROBLEMS hiện tại: lỗi đã biến mất -> '✓ Đã
+        sửa', lỗi mới phát sinh -> thêm vào. main_window gọi khi diagnostic đổi và
+        sau mỗi lượt áp code. Trả True nếu VẪN còn lỗi đang mở."""
+        live = self._error_rows()
+        live_by_sig: dict[str, tuple] = {}
+        for row in live:
+            live_by_sig.setdefault(self._problem_row_sig(row), tuple(row))
+        pb_id = self._live_problem_card
+        block = self._problem_blocks.get(pb_id)
+        if block is None:
+            if not live:
+                return False
+            self._insert_problem_card(live, auto_open=auto_open)
+            self._persist_session()
+            return bool(live)
+        prev_rows = [tuple(r) for r in (block.get("rows") or [])]
+        prev_sigs = list(block.get("sigs") or [])
+        prev_resolved = list(block.get("resolved") or [])
+        seen: set[str] = set()
+        merged: list[tuple] = []
+        sigs: list[str] = []
+        resolved: list[bool] = []
+        for idx, sig in enumerate(prev_sigs):
+            is_live = sig in live_by_sig
+            if is_live:
+                row = live_by_sig[sig]
+            else:
+                row = prev_rows[idx] if idx < len(prev_rows) else None
+            if row is None:
+                continue
+            merged.append(tuple(row))
+            sigs.append(sig)
+            resolved.append(not is_live)
+            seen.add(sig)
+        for row in live:
+            sig = self._problem_row_sig(row)
+            if sig in seen:
+                continue
+            merged.append(tuple(row))
+            sigs.append(sig)
+            resolved.append(False)
+            seen.add(sig)
+        if len(merged) > self.PROBLEM_CARD_LIMIT:
+            open_items = [t for t in zip(merged, sigs, resolved) if not t[2]]
+            done_items = [t for t in zip(merged, sigs, resolved) if t[2]]
+            trimmed = (open_items + done_items)[: self.PROBLEM_CARD_LIMIT]
+            merged = [t[0] for t in trimmed]
+            sigs = [t[1] for t in trimmed]
+            resolved = [t[2] for t in trimmed]
+        changed = (
+            merged != prev_rows
+            or sigs != prev_sigs
+            or resolved != prev_resolved
+        )
+        block["rows"] = merged
+        block["sigs"] = sigs
+        block["resolved"] = resolved
+        open_ct = sum(1 for f in resolved if not f)
+        if changed:
+            self._render_history()
+            self._persist_session()
+        if auto_open and open_ct:
+            self._open_first_live_problem(pb_id)
+        return open_ct > 0
 
     def _problem_card_html(self, pb_id: str) -> str:
         block = self._problem_blocks.get(pb_id) or {}
-        rows = block.get("rows") or []
+        rows = [tuple(r) for r in (block.get("rows") or [])]
         if not rows:
             return ""
-        head = (
-            f'<div style="margin:8px 0 2px 0;">'
-            f'<span style="color:{palette.RED};">⚠ {len(rows)} lỗi cần sửa</span>'
-            f'<span style="color:{palette.TEXT_4};"> — bấm để mở tệp</span></div>'
-        )
+        flags = list(block.get("resolved") or [])
+        done = [bool(flags[i]) if i < len(flags) else False for i in range(len(rows))]
+        open_ct = sum(1 for f in done if not f)
+        done_ct = len(rows) - open_ct
+        if open_ct == 0:
+            head = (
+                f'<div style="margin:8px 0 2px 0;">'
+                f'<span style="color:{palette.GREEN_LIGHT};">✓ Đã sửa hết {done_ct} lỗi'
+                f'</span></div>'
+            )
+        else:
+            tail = f" · ✓ {done_ct} đã sửa" if done_ct else ""
+            head = (
+                f'<div style="margin:8px 0 2px 0;">'
+                f'<span style="color:{palette.RED};">⚠ còn {open_ct} lỗi cần sửa{tail}</span>'
+                f'<span style="color:{palette.CHAT_TEXT_4};"> — bấm để mở tệp</span></div>'
+            )
         body = []
         for idx, row in enumerate(rows):
             _sev, path, line, _column, message = row
             rel = html.escape(self._rel_shown(path))
             target = html.escape(str(message or "").strip()[:140])
-            body.append(
-                "<tr>"
-                f'<td><a href="x-luas30://openfile/{pb_id}:{idx}" '
-                f'style="color:{palette.ACCENT_HOVER};text-decoration:none;">'
-                f"{rel}:{html.escape(str(line or 1))}</a></td>"
-                f'<td style="color:{palette.TEXT_3};"> {target}</td>'
-                "</tr>"
-            )
+            loc = f"{rel}:{html.escape(str(line or 1))}"
+            if done[idx]:
+                body.append(
+                    "<tr>"
+                    f'<td style="color:{palette.GREEN_LIGHT};">✓ {loc}</td>'
+                    f'<td style="color:{palette.CHAT_TEXT_4};text-decoration:line-through;">'
+                    f" {target}</td>"
+                    "</tr>"
+                )
+            else:
+                body.append(
+                    "<tr>"
+                    f'<td><a href="x-luas30://openfile/{pb_id}:{idx}" '
+                    f'style="color:{palette.CHAT_ACCENT};text-decoration:none;">{loc}</a></td>'
+                    f'<td style="color:{palette.CHAT_TEXT_3};"> {target}</td>'
+                    "</tr>"
+                )
         table = (
             '<table width="100%" cellspacing="0" cellpadding="2">' + "".join(body) + "</table>"
         )
         return head + table + "<br>"
 
     def report_errors_after_change(self) -> bool:
-        """main_window gọi sau khi áp code: thẻ lỗi + MỞ NGAY tệp đầu cần sửa.
+        """main_window gọi sau khi áp code: làm tươi THẺ SỐNG (lỗi đã sửa -> ✓ Đã
+        sửa, lỗi mới -> thêm) và mở ngay lỗi đầu còn lại. Trả True nếu vẫn còn lỗi.
 
-        Trả `True` nếu còn lỗi (đã hiện thẻ). Đây là hành vi kiểu Antigravity —
-        hết lượt sửa mà vẫn còn diagnostic thìIDE nhảy tới chỗ hỏng để người dùng
-        (hoặc agent ở lượt tiếp) thấy ngay.
+        Đây là hành vi kiểu Antigravity — hết lượt sửa mà vẫn còn diagnostic thì
+        IDE nhảy tới chỗ hỏng để người dùng (hoặc agent ở lượt tiếp) thấy ngay.
         """
-        rows = self._error_rows()
-        if not rows:
-            return False
-        self._insert_problem_card(rows, auto_open=True)
-        self._persist_session()
-        return True
+        return self.refresh_problem_card(auto_open=True)
 
     def _offer_shell(self, action: ShellAction) -> None:
         if self._cancel_requested:
@@ -2061,8 +2379,16 @@ class AIChatView(QWidget):
 
         policy = self._shell_policy()
         if policy == "full":
-            self.activity.add("Shell", "Full access: running command automatically.", "success")
-            QTimer.singleShot(0, lambda: self.run_pending_shell(auto=True))
+            if risk in {"dangerous", "sensitive"}:
+                self.activity.add(
+                    "Shell",
+                    "Full access still needs confirmation for dangerous/sensitive "
+                    "commands. Review the card above and press Run to proceed.",
+                    "warning",
+                )
+            else:
+                self.activity.add("Shell", "Full access: running command automatically.", "success")
+                QTimer.singleShot(0, lambda: self.run_pending_shell(auto=True))
 
     def _resolve_action_cwd(self, action: ShellAction) -> Path | None:
         value = (action.cwd or "project").strip()
@@ -2099,7 +2425,7 @@ class AIChatView(QWidget):
         if auto and not full_auto:
             return
 
-        if not full_auto and risk in {"dangerous", "sensitive"}:
+        if risk in {"dangerous", "sensitive"}:
             answer = QMessageBox.warning(
                 self,
                 "Confirm shell command",
@@ -2319,6 +2645,7 @@ class AIChatView(QWidget):
         self.activity.add("AI error", error, "error")
         self.status.setText("Error")
         self._set_agent_active(False)
+        self._set_status_state("error")
         self.status_message.emit("ChatAI request failed")
 
     def _worker_finished(self) -> None:

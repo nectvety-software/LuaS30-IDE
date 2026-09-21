@@ -279,6 +279,54 @@ class AIChangeService:
     def reject(self) -> None:
         self.pending = None
 
+    def discard(self, change_set: PreparedChangeSet, index: int) -> PreparedChange:
+        """Bo mot file khoi set cho duyet (Reject tung file kieu Codex)."""
+        try:
+            return change_set.changes.pop(int(index))
+        except (IndexError, ValueError, TypeError) as exc:
+            raise ValueError("No such pending AI change.") from exc
+
+    def apply_one(
+        self, change_set: PreparedChangeSet, index: int
+    ) -> tuple[Path, Path | None]:
+        """Ghi mot file duy nhat (Accept tung file kieu Codex).
+
+        Backup rieng theo stamp giong apply() de van khoi phuc duoc.
+        """
+        try:
+            change = change_set.changes[int(index)]
+        except (IndexError, ValueError, TypeError) as exc:
+            raise ValueError("No such pending AI change.") from exc
+
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        backup_dir = change_set.project_root / ".luas30" / "ai-backups" / stamp
+        target = change.absolute_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        created_backup = False
+        if target.is_file():
+            backup = backup_dir / change.relative_path
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(target, backup)
+            created_backup = True
+
+        fd, temp_name = tempfile.mkstemp(
+            prefix=target.name + ".ai-",
+            suffix=".tmp",
+            dir=str(target.parent),
+            text=True,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(change.after)
+            os.replace(temp_name, target)
+        finally:
+            if os.path.exists(temp_name):
+                os.unlink(temp_name)
+
+        change_set.changes.remove(change)
+        self.last_backup_dir = backup_dir if created_backup else self.last_backup_dir
+        return target, (backup_dir if created_backup else None)
+
     def apply(self, change_set: PreparedChangeSet | None = None) -> tuple[list[Path], Path | None]:
         change_set = change_set or self.pending
         if not change_set:

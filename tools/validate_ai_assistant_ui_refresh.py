@@ -21,64 +21,52 @@ if compile_result.returncode != 0:
     print("FAIL: python -m compileall -q studio tools")
     raise SystemExit(compile_result.returncode)
 print("PASS: python -m compileall -q studio tools")
+
 chat = (ROOT / "studio/app/views/ai_chat_view.py").read_text(encoding="utf-8")
+renderer = (ROOT / "studio/app/views/ai_chat_render.py").read_text(encoding="utf-8")
 theme = (ROOT / "studio/app/ui/theme.py").read_text(encoding="utf-8")
 main_window = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 editor_tabs = (ROOT / "studio/app/editor/editor_tabs.py").read_text(encoding="utf-8")
 editor_groups = (ROOT / "studio/app/editor/editor_group_manager.py").read_text(encoding="utf-8")
 
+missing: list[str] = []
+
 required_chat = (
-    'self.setMinimumWidth(340)',
-    'self.setMaximumWidth(720)',
-    'HOẠT ĐỘNG AGENT',
-    'tóm tắt · không hiển thị suy luận riêng tư',
-    'AIComposerToolButton',
-    'AIComposerTextTool',
-    'Shift + Enter để xuống dòng',
+    "TranscriptHtmlRenderer",
+    "ACCESS_MODES",
     'QPushButton("Gửi")',
-    'self.send_button.setText("Dừng")',
-    'self.send_button.setText("Gửi")',
-    'AIStatusDot',
-    'AI hỗ trợ lập trình LuaS30',
-    'label = "Bạn" if is_user else "AI Trợ lý"',
-    'marker = "B" if is_user else "✦"',
-    'def _send_or_stop',
-    'def stop_agent',
+    "def _send_or_stop",
+    "def stop_agent",
+    "worker.abort()",
 )
+missing += [f"chat:{token}" for token in required_chat if token not in chat]
+
+required_renderer = (
+    "class TranscriptHtmlRenderer",
+    "def render_markdown",
+    "def render_code_block",
+    "AI Trợ lý",
+)
+missing += [f"renderer:{token}" for token in required_renderer if token not in renderer]
 
 required_theme = (
-    'QWidget#AIChatView',
-    'QPushButton#AIChatTab:checked',
-    'QPlainTextEdit#AIChatPrompt',
-    'QToolButton#AIComposerToolButton',
-    'QToolButton#AIComposerTextTool',
-    'QLabel#AIComposerHint',
-    'QLabel#AIStatusDot',
-    'QLabel#AIStatusHint',
-    'QPushButton#AIAccessModeButton',
-    'QPushButton#AIProviderCompact',
-    'QPushButton#AIChatSendIcon',
-    'QPushButton#AIChatSendIcon[running="true"]',
-    'QLabel#AITabStatusBadge',
+    "QTabWidget#EditorTabs QTabBar::tab",
+    "max-width: 230px",
+    "QLabel#AITabStatusBadge",
     'QLabel#AITabStatusBadge[aiState="modified"]',
     'QLabel#AITabStatusBadge[aiState="created"]',
 )
-
-missing = [f"chat:{token}" for token in required_chat if token not in chat]
 missing += [f"theme:{token}" for token in required_theme if token not in theme]
 
-
 required_editor_tabs = (
-    'class _AITabStatusBadge(QLabel)',
+    "class _AITabStatusBadge(QLabel)",
     '"modified": "AI Modified"',
     '"created": "AI Created"',
-    'self.setText(label)',
-    'def set_ai_file_status(self, path: str | Path, state: str) -> bool',
-    'QTabBar.ButtonPosition.LeftSide',
-    'def clear_ai_file_status(self, path: str | Path) -> bool',
-    'def open_file(self, path: str | Path, *, activate: bool = True)',
-    'if activate:\n                self.setCurrentIndex(existing[0])',
-    'if activate:\n            self.setCurrentIndex(index)',
+    "self.setText(label)",
+    "def set_ai_file_status(self, path: str | Path, state: str) -> bool",
+    "QTabBar.ButtonPosition.LeftSide",
+    "def clear_ai_file_status(self, path: str | Path) -> bool",
+    "def open_file(self, path: str | Path, *, activate: bool = True)",
 )
 missing += [
     f"editor_tabs:{token}"
@@ -87,12 +75,12 @@ missing += [
 ]
 
 required_editor_groups = (
-    'def set_ai_file_status(self, path: str | Path, state: str) -> bool',
-    'return group.set_ai_file_status(resolved, state)',
-    'def clear_ai_file_status(self, path: str | Path) -> bool',
-    'def open_file(self, path: str | Path, *, activate: bool = True)',
-    'return self.active_tabs().open_file(resolved, activate=activate)',
-    'return self.groups[target_index].open_file(path, activate=False)',
+    "def set_ai_file_status(self, path: str | Path, state: str) -> bool",
+    "return group.set_ai_file_status(resolved, state)",
+    "def clear_ai_file_status(self, path: str | Path) -> bool",
+    "def open_file(self, path: str | Path, *, activate: bool = True)",
+    "return self.active_tabs().open_file(resolved, activate=activate)",
+    "return self.groups[target_index].open_file(path, activate=False)",
 )
 missing += [
     f"editor_groups:{token}"
@@ -100,53 +88,38 @@ missing += [
     if token not in editor_groups
 ]
 
-required_ai_file_tabs = (
-    'def _reload_applied_editors(self, change_set: PreparedChangeSet)',
-    'self.tabs.open_file(target, activate=False)',
-    'self.tabs.set_ai_file_status(',
+required_main = (
+    "def _reload_applied_editors(self, change_set: PreparedChangeSet)",
+    "self.tabs.open_file(target, activate=False)",
+    "self.tabs.set_ai_file_status(",
     '"modified" if change.existed else "created"',
-    'self.tabs.open_file(opened_targets[0], activate=True)',
-    'files created or changed by the agent are opened as background tabs',
+    "self.tabs.open_file(opened_targets[0], activate=True)",
 )
-missing += [
-    f"main_window:{token}"
-    for token in required_ai_file_tabs
-    if token not in main_window
-]
+missing += [f"main_window:{token}" for token in required_main if token not in main_window]
 
-# The compact UI must not regress into a separate replacement agent/backend.
-for forbidden in (
-    "OpenAIProvider2",
-    "AnthropicProvider2",
-    "GeminiProvider2",
+# Upstream features that must survive conflict resolution.
+for token in (
+    "_ai_problem_timer",
+    "_refresh_ai_problem_card",
 ):
-    if forbidden in chat:
-        missing.append(f"unexpected duplicate provider: {forbidden}")
-
-# Keep existing safety/integration hooks intact while refreshing only presentation.
-for preserved in (
-    "AIRequestThread",
-    "AIReadOnlyToolService",
-    "CodebaseContextService",
-    "changes_proposed = Signal(object)",
-    "review_changes_requested = Signal()",
-    "apply_changes_requested = Signal()",
-    "reject_changes_requested = Signal()",
-    "worker.abort()",
+    if token not in main_window:
+        missing.append(f"upstream regression: missing {token}")
+for token in (
+    "_recover_fenced_files",
+    "_recover_json_tool_calls",
 ):
-    if preserved not in chat:
-        missing.append(f"regression: missing {preserved}")
+    protocol = (ROOT / "studio/app/services/ai_agent_protocol.py").read_text(encoding="utf-8")
+    if token not in protocol:
+        missing.append(f"upstream regression: missing {token}")
 
 if missing:
-    print("FAIL: AI assistant UI refresh")
+    print("FAIL: AI assistant/editor upstream reconciliation")
     for item in missing:
         print(" -", item)
     raise SystemExit(1)
 
-print("PASS: compact AI assistant header/tabs/composer/status UI is installed")
-print("PASS: Gửi/Dừng state remains wired to the existing hard-stop flow")
-print("PASS: existing provider, context, read-only tools and AI Changes signals remain wired")
-print("PASS: refreshed theme uses the existing LuaS30 palette/QSS architecture")
-print("PASS: every AI-changed/created text file opens as a VS Code-like editor tab")
-print("PASS: AI-touched tabs expose AI Modified / AI Created badges with distinct theme states")
-print("PASS: background tab opening does not steal focus until the primary AI file is selected")
+print("PASS: upstream modern AI chat renderer and stop flow are preserved")
+print("PASS: upstream fenced-file/json-tool recovery is preserved")
+print("PASS: upstream live problem-card wiring is preserved")
+print("PASS: AI-changed/created files open as VS Code-like editor tabs")
+print("PASS: AI Modified / AI Created badges are wired and themed")

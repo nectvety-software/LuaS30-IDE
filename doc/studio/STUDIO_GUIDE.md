@@ -597,13 +597,47 @@ reused from the Qt resource, so nothing is bundled). The page gets:
   paths and blocked names (`.env`, `.git`, …). The result reports per-file errors,
   and the explorer/asset views refresh after a successful batch.
 
-### ChatAI specialization: project confinement, the SKILLS system, and the `problems` tool
+### ChatAI specialization: the project IS the codebase (read + write confinement), SKILLS, `problems`
+
+**Golden rule (Codex-style target):** LuaS30-IDE is only an editor + MRE compiler +
+VXPEmu launcher. The "codebase" the agent reads AND writes is the **project the user
+created/opened** (`MainWindow.project_root`, e.g. `Documents\LuaS30 Projects\<name>`),
+never the IDE's own install/source tree. Every `luas30-edit` block, recovered fenced
+code block and `asset`/`ui_design` write resolves against that project root, so
+generated code lands in the created project exactly like Codex commits to a repo.
 
 The agent protocol (`TOOL_NAMES`) exposes `read | grep | glob | ui_design | asset |
-skill | problems | run_app`. The agent is **confined to the currently open project**: every
-read/grep/glob path is resolved relative to the project root and stays inside it, and
-there is no longer any way to read or edit the LuaS30 IDE's own installation/source
-tree. The old separate `engine` tool (and its `"scope":"engine"` escape hatch that
+skill | problems | run_app`. The agent is **confined to the currently open project on
+BOTH sides of the boundary**:
+- **Read/grep/glob** paths resolve relative to the project root and stay inside it;
+  there is no way to read the LuaS30 IDE's own installation/source tree.
+- **Write/apply** is guarded by `AIChangeService._safe_target`
+  (`app/services/ai_change_service.py`), which rejects absolute paths, drive letters,
+  `..`/symlink escapes, protected names, and any target that fails
+  `relative_to(project_root)` — so an AI edit can never escape into the IDE install
+  dir. New files are created under the project root (`target.parent.mkdir(...)`);
+  existing files are backed up under `<project>/.luas30/ai-backups/<stamp>/` before
+  overwrite, and `apply_one` / `discard` give per-file Accept/Revert (Codex-style).
+
+**Plain fenced code → real project file (Codex-style).** Models sometimes ignore the
+`luas30-edit` protocol and paste complete source in an ordinary Markdown fence. To
+still honor "add the code to the project", `_recover_fenced_files`
+(`app/services/ai_agent_protocol.py`) turns a fence whose info-string NAMES a file —
+` ```lua path=src/menu.lua `, ` ```json file=data.json `, or a bare ` ```src/conf.lua `
+header — into a whole-file `CodeEditAction`, so a NEW file is created in the open
+project (recovered blocks are stripped from the visible chat text). The path may also
+sit on the block's FIRST BODY LINE (```` ```lua ```` then `path=src/menu.lua` on its own
+line, a common model habit); that directive line is detected and removed from the file
+content, while a real code line that merely contains `path =` is never mistaken for it. It is a fallback
+only: an existing `luas30-edit`/XML edit block wins, a language-only fence with no
+path still falls back to the active-file recovery, and a short snippet with no path
+creates nothing (no false positives). `_extract_fenced_path` pre-rejects absolute,
+drive-letter and `..` paths, and `AIChangeService._safe_target` re-confines on write,
+so recovery can never land outside the project. The system prompt tells the model to
+put the project-relative path in the fence header when it pastes full files.
+Validator: `tools/validate_ai_fenced_files.py`.
+
+The old separate `engine` tool (and its `"scope":"engine"` escape hatch that
 let the agent open `templates/`, `sdk/`, `engine/`, `compat/`, `doc/ai/` and
 `extensions/`) has been **removed**: `args.scope` is stripped from every call, and a
 legacy `{"tool":"engine","args":{"op":…}}` answer from an old model is downgraded by
@@ -673,16 +707,19 @@ out of provider request payloads. Validator: `tools/validate_ai_change_card.py`.
 
 After every applied edit batch, `MainWindow._apply_ai_changes` schedules
 `ai_chat.report_errors_after_change()` (via `QTimer.singleShot(700, …)`). That is the
-Antigravity-style error handoff: `AIChatView` pulls the structured PROBLEMS rows
-through `set_problems_rows_provider(lambda: self.bottom.problems._rows())`, keeps
-error-severity rows first, and inserts a `⚠ N lỗi cần sửa` card whose entries are
-clickable `x-luas30://openfile/<pb_id>:<idx>` anchors. `_on_transcript_anchor`
-resolves an anchor and calls `set_open_location_provider` → `MainWindow._ai_open_location`,
-which opens the offending file at its line/column in the editor (reusing the existing
-`open_location` primitive). When errors are present the first one auto-opens so the
-fix lands in front of the user, matching the problems → analyze → edit → verify loop.
-Problem card history entries use `role:"problems"` and are also excluded from provider
-payloads. Validator: `tools/validate_ai_skills.py` (section 7).
+Antigravity-style error handoff, now a **live, self-updating card** rather than a
+frozen snapshot: `AIChatView` keeps ONE live card (`_live_problem_card`) and matches
+problems by **signature** (`_problem_row_sig` = severity + project-relative path +
+normalized message — deliberately NOT the line number, which shifts on every edit).
+When a problem disappears from the panel it flips to `✓ Đã sửa` (green, struck
+through); new problems are appended; the header recounts as `⚠ còn N lỗi cần sửa ·
+✓ M đã sửa`, and when everything clears it becomes `✓ Đã sửa hết`. `refresh_problem_card()`
+is driven from BOTH `_apply_ai_changes` (via `report_errors_after_change`) and the
+editor's `diagnostics_changed` path: `MainWindow._diagnostics_changed` pings a throttled
+`_ai_problem_timer` (400ms) → `_refresh_ai_problem_card`, so the transcript card tracks
+live fixes typed by the user or agent, not just AI applies. Open problems stay clickable
+`x-luas30://openfile/<pb_id>:<idx>` anchors (auto-opens the first still-open one). A new
+session resets the live card. Validator: `tools/validate_ai_problem_card_live.py`.
 
 Models that ignore the fenced JSON protocol (Gemini/Ling-style) often emit
 native XML calls — `<tool_call=read>` or a bare open tag with

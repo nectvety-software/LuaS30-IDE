@@ -4,10 +4,10 @@ import difflib
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
+from PySide6.QtGui import QColor, QFontDatabase, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPlainTextEdit,
-    QPushButton, QSplitter, QTextEdit, QVBoxLayout, QWidget,
+    QPushButton, QSplitter, QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from app.services.ai_change_service import PreparedChange, PreparedChangeSet
@@ -56,8 +56,13 @@ def _changed_line_sets(before: str, after: str) -> tuple[set[int], set[int]]:
 
 
 class AIDiffView(QWidget):
+    """Duyet thay doi AI kieu Codex: unified diff mac dinh + Apply/Reject tung file."""
+
     apply_all_requested = Signal()
     reject_all_requested = Signal()
+    accept_current_requested = Signal()
+    reject_current_requested = Signal()
+    view_mode_changed = Signal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -81,15 +86,44 @@ class AIDiffView(QWidget):
         self.summary.setObjectName("AIDiffSummary")
         row.addWidget(self.summary, 1)
 
+        self.unified_button = QPushButton("Unified")
+        self.unified_button.setObjectName("AIDiffViewMode")
+        self.unified_button.setCheckable(True)
+        self.unified_button.setChecked(True)
+        self.unified_button.setToolTip("Unified diff kieu Codex (mac dinh)")
+        self.split_button = QPushButton("Split")
+        self.split_button.setObjectName("AIDiffViewMode")
+        self.split_button.setCheckable(True)
+        self.split_button.setToolTip("Hai pane CURRENT / PROPOSED")
+        self.unified_button.clicked.connect(lambda: self.set_view_mode("unified"))
+        self.split_button.clicked.connect(lambda: self.set_view_mode("split"))
+        row.addWidget(self.unified_button)
+        row.addWidget(self.split_button)
+
+        self.accept_button = QPushButton("Accept File")
+        self.accept_button.setObjectName("AIDiffAccept")
+        apply_icon(self.accept_button, "check", 13)
+        self.accept_button.setToolTip("Ghi file dang chon ngay (Codex: accept)")
+        self.accept_button.clicked.connect(self.accept_current_requested)
+        row.addWidget(self.accept_button)
+
         self.reject_button = QPushButton("Reject")
         self.reject_button.setObjectName("AIDiffReject")
         apply_icon(self.reject_button, "close", 13)
         self.reject_button.clicked.connect(self.reject_all_requested)
         row.addWidget(self.reject_button)
 
+        self.reject_file_button = QPushButton("Reject File")
+        self.reject_file_button.setObjectName("AIDiffRejectFile")
+        apply_icon(self.reject_file_button, "delete", 13)
+        self.reject_file_button.setToolTip("Bo file dang chon, giu cac file khac")
+        self.reject_file_button.clicked.connect(self.reject_current_requested)
+        row.addWidget(self.reject_file_button)
+
         self.apply_button = QPushButton("Apply Code")
         self.apply_button.setObjectName("AIDiffApply")
         apply_icon(self.apply_button, "save", 13)
+        self.apply_button.setToolTip("Ghi tat ca file (Codex: accept all)")
         self.apply_button.clicked.connect(self.apply_all_requested)
         row.addWidget(self.apply_button)
         root.addWidget(toolbar)
@@ -134,7 +168,19 @@ class AIDiffView(QWidget):
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
         split.setSizes([220, 1000])
-        root.addWidget(split, 1)
+
+        self.unified = QPlainTextEdit()
+        self.unified.setObjectName("AIDiffUnified")
+        self.unified.setReadOnly(True)
+        self.unified.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.unified.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(split)
+        self.stack.addWidget(self.unified)
+        self.stack.setCurrentIndex(1)
+        self.view_mode = "unified"
+        root.addWidget(self.stack, 1)
 
         self.status = QLabel(
             "AI changes are only written after Apply Code unless the selected access mode permits automatic edits."
@@ -151,10 +197,13 @@ class AIDiffView(QWidget):
         enabled = bool(change_set and change_set.changes)
         self.apply_button.setEnabled(enabled)
         self.reject_button.setEnabled(enabled)
+        self.accept_button.setEnabled(enabled)
+        self.reject_file_button.setEnabled(enabled)
         if not enabled:
             self.summary.setText("No pending changes")
             self.before.clear()
             self.after.clear()
+            self.unified.clear()
             self.before_label.setText("CURRENT")
             self.after_label.setText("PROPOSED")
             return
@@ -177,11 +226,21 @@ class AIDiffView(QWidget):
             return self.change_set.changes[row]
         return None
 
+    def set_view_mode(self, mode: str) -> None:
+        mode = "split" if str(mode).lower() == "split" else "unified"
+        self.view_mode = mode
+        self.unified_button.setChecked(mode == "unified")
+        self.split_button.setChecked(mode == "split")
+        self.stack.setCurrentIndex(1 if mode == "unified" else 0)
+        self.view_mode_changed.emit(mode)
+        self._show_row(self.files.currentRow())
+
     def _show_row(self, _row: int) -> None:
         item = self.current_change()
         if not item:
             self.before.clear()
             self.after.clear()
+            self.unified.clear()
             return
         self.before_label.setText(f"CURRENT · {item.relative_path}")
         self.after_label.setText(f"PROPOSED · {item.relative_path}")
@@ -190,10 +249,45 @@ class AIDiffView(QWidget):
         left, right = _changed_line_sets(item.before, item.after)
         self.before.set_changed_lines(left, palette.DIFF_REMOVED_BG)
         self.after.set_changed_lines(right, palette.DIFF_ADDED_BG)
+        self._render_unified(item.unified_diff())
+
+    def _render_unified(self, text: str) -> None:
+        """Mot pane diff kieu Codex: hunk header + dong - do / + xanh."""
+        self.unified.clear()
+        cursor = self.unified.textCursor()
+        dim = QTextCharFormat()
+        dim.setForeground(QColor(palette.TEXT_4))
+        hunk = QTextCharFormat()
+        hunk.setForeground(QColor(palette.INFO))
+        hunk.setFontWeight(600)
+        removed = QTextCharFormat()
+        removed.setForeground(QColor(palette.RED_LIGHT))
+        removed.setBackground(QColor(palette.DIFF_REMOVED_BG))
+        removed.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
+        added = QTextCharFormat()
+        added.setForeground(QColor(palette.GREEN_LIGHT))
+        added.setBackground(QColor(palette.DIFF_ADDED_BG))
+        added.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
+        for line in (text or "(no differences)").splitlines():
+            if line.startswith("@@"):
+                fmt = hunk
+            elif line.startswith("---") or line.startswith("+++"):
+                fmt = dim
+            elif line.startswith("-"):
+                fmt = removed
+            elif line.startswith("+"):
+                fmt = added
+            else:
+                fmt = dim
+            cursor.insertText(line + "\n", fmt)
+        self.unified.setTextCursor(cursor)
+        self.unified.moveCursor(QTextCursor.MoveOperation.Start)
 
     def mark_applied(self, backup_dir: Path | None = None) -> None:
         self.apply_button.setEnabled(False)
         self.reject_button.setEnabled(False)
+        self.accept_button.setEnabled(False)
+        self.reject_file_button.setEnabled(False)
         message = "Applied AI code changes."
         if backup_dir:
             message += f" Backup: {backup_dir}"
@@ -202,4 +296,6 @@ class AIDiffView(QWidget):
     def mark_rejected(self) -> None:
         self.apply_button.setEnabled(False)
         self.reject_button.setEnabled(False)
+        self.accept_button.setEnabled(False)
+        self.reject_file_button.setEnabled(False)
         self.status.setText("AI code changes were rejected; project files were not modified.")

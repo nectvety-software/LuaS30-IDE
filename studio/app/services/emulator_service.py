@@ -1,13 +1,43 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, Signal
+from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
 from app.core.paths import resolve_script, tool_python
 from app.core.utf8 import decode_process_bytes, utf8_qprocess_environment
 from app.services.build_service import kill_process_tree
+
+_STILL_ACTIVE = 259
+_WATCH_INTERVAL_MS = 2000
+
+
+def pid_alive(pid: int) -> bool:
+    """True khi PID con song. Windows: GetExitCodeProcess (chinh xac hon
+    os.kill(pid, 0) — ham do van bao OK sau khi tien trinh chet)."""
+    if not pid or pid <= 0:
+        return False
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, int(pid))
+        if not handle:
+            return False
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == _STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return False
 
 
 class EmulatorService(QObject):
@@ -23,6 +53,10 @@ class EmulatorService(QObject):
         self.engine_root = Path(engine_root).resolve()
         self.process: QProcess | None = None
         self.last_manifest: dict = {}
+        self._watched_pid = 0
+        self._watcher = QTimer(self)
+        self._watcher.setInterval(_WATCH_INTERVAL_MS)
+        self._watcher.timeout.connect(self._watch_tick)
 
     def launch_manifest(self, manifest: dict | Path) -> bool:
         if isinstance(manifest, Path):
@@ -54,6 +88,8 @@ class EmulatorService(QObject):
             self.failed.emit(f"Emulator runner not found: {runner}")
             return False
 
+        self._stop_watching()
+
         proc = QProcess(self)
         self.process = proc
         proc.setWorkingDirectory(str(self.engine_root))
@@ -83,6 +119,7 @@ class EmulatorService(QObject):
         return True
 
     def stop(self) -> None:
+        self._stop_watching()
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
             pid = int(self.process.processId() or 0)
             # run_emulator.py spawn VXPEmu.exe làm con. Giết đúng CÂY theo PID
@@ -114,6 +151,7 @@ class EmulatorService(QObject):
                 except Exception:
                     pass
             self.launched.emit(dict(self.last_manifest))
+            self._start_watching()
         else:
             message = f"Emulator runner exited with code {exit_code}."
             self.state_changed.emit("Error")
@@ -121,3 +159,26 @@ class EmulatorService(QObject):
         if self.process:
             self.process.deleteLater()
         self.process = None
+
+    def _start_watching(self) -> None:
+        """Canh PID VXPEmu that: tat/crash -> bao Stopped thay vi ket Running."""
+        self._stop_watching()
+        try:
+            pid = int(self.last_manifest.get("emulator_pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        if pid <= 0 or os.name != "nt":
+            return
+        self._watched_pid = pid
+        self._watcher.start()
+
+    def _stop_watching(self) -> None:
+        self._watcher.stop()
+        self._watched_pid = 0
+
+    def _watch_tick(self) -> None:
+        if self._watched_pid and pid_alive(self._watched_pid):
+            return
+        self._stop_watching()
+        self.output.emit("[EMU] VXPEmu đã thoát (đóng cửa sổ hoặc crash). Trạng thái: Stopped.\n")
+        self.state_changed.emit("Stopped")
