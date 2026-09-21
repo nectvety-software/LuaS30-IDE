@@ -72,7 +72,7 @@ required_editor_tabs = (
     'class _AITabStatusBadge(QLabel)',
     '"modified": "AI Modified"',
     '"created": "AI Created"',
-    'self.setText(f"● {label}")',
+    'self.setText(label)',
     'def set_ai_file_status(self, path: str | Path, state: str) -> bool',
     'QTabBar.ButtonPosition.LeftSide',
     'def clear_ai_file_status(self, path: str | Path) -> bool',
