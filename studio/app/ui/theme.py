@@ -197,7 +197,7 @@ QTabWidget#EditorTabs QTabBar::tab {
     margin-right: 0;
     padding: 6px 10px;
     min-width: 96px;
-    max-width: 240px;
+    max-width: 230px;
 }
 QTabWidget#EditorTabs QTabBar::tab:selected {
     background: @BG_SURFACE;
