@@ -252,13 +252,14 @@ class EditorTabs(QTabWidget):
         editor.request_find.connect(self.request_find)
         editor.document().contentsChanged.connect(self.state_changed)
 
-    def open_file(self, path: str | Path) -> CodeEditor | None:
+    def open_file(self, path: str | Path, *, activate: bool = True) -> CodeEditor | None:
         file_path = Path(path).resolve()
         if not file_path.is_file():
             return None
         existing = self.find_editor(file_path)
         if existing:
-            self.setCurrentIndex(existing[0])
+            if activate:
+                self.setCurrentIndex(existing[0])
             return existing[1]
         if file_path.suffix.lower() not in TEXT_EXTENSIONS and file_path.name not in {"Makefile"}:
             QMessageBox.information(self, "LuaS30 Studio", f"Binary preview is not supported yet:\n{file_path}")
@@ -282,7 +283,8 @@ class EditorTabs(QTabWidget):
         self._connect_editor(editor)
         index = self.addTab(pane, file_tab_icon(file_path), file_path.name)
         self.setTabToolTip(index, str(file_path))
-        self.setCurrentIndex(index)
+        if activate:
+            self.setCurrentIndex(index)
         self.file_opened.emit(file_path)
         self.state_changed.emit()
         return editor
