@@ -420,13 +420,13 @@ class VxpMainWindow(QWidget):
         """Keep title/menu text readable even when Windows uses a light palette."""
         palette = menu_bar.palette()
         for role, color in (
-            (QPalette.ColorRole.Window, "#0F1115"),
-            (QPalette.ColorRole.Base, "#151A23"),
-            (QPalette.ColorRole.Button, "#151A23"),
-            (QPalette.ColorRole.WindowText, "#E6E8EC"),
-            (QPalette.ColorRole.Text, "#E6E8EC"),
-            (QPalette.ColorRole.ButtonText, "#E6E8EC"),
-            (QPalette.ColorRole.Highlight, "#27446A"),
+            (QPalette.ColorRole.Window, "#111122"),
+            (QPalette.ColorRole.Base, "#19192E"),
+            (QPalette.ColorRole.Button, "#19192E"),
+            (QPalette.ColorRole.WindowText, "#D8DBE7"),
+            (QPalette.ColorRole.Text, "#D8DBE7"),
+            (QPalette.ColorRole.ButtonText, "#D8DBE7"),
+            (QPalette.ColorRole.Highlight, "#1C2A3B"),
             (QPalette.ColorRole.HighlightedText, "#FFFFFF"),
         ):
             palette.setColor(role, QColor(color))
@@ -833,7 +833,7 @@ class VxpMainWindow(QWidget):
 
     def _build_ai_dock(self) -> None:
         """CHAT AI — cột thứ ba của workspace, kiểu panel Chat của VS Code."""
-        # AIChatView tự mang header "AI Trợ lý" + tab riêng nên bỏ header PanelFrame.
+        # AIChatView tự mang header "AI Agent" + tab riêng nên bỏ header PanelFrame.
         ai_panel = PanelFrame("CHAT AI", show_header=False)
         ai_panel.set_content_margins(0, 0, 0, 0)
         self.ai_panel_frame = ai_panel
@@ -2279,7 +2279,7 @@ class VxpMainWindow(QWidget):
         thì mở tab. Tab được chọn cuối cùng là tệp đầu tiên trong change set.
         """
         self._enter_editor()
-        first_index = None
+        first_editor = None
         for change in change_set.changes:
             target = change.absolute_path
             if not Path(target).is_file():
@@ -2289,12 +2289,10 @@ class VxpMainWindow(QWidget):
                 continue
             editor.setPlainText(change.after)
             editor.document().setModified(False)
-            if first_index is None:
-                found = self.tabs.find_editor(Path(target).resolve())
-                if found:
-                    first_index = found[0]
-        if first_index is not None:
-            self.tabs.setCurrentIndex(first_index)
+            if first_editor is None:
+                first_editor = editor
+        if first_editor is not None:
+            first_editor.setFocus()
 
     def _apply_ai_changes(self) -> None:
         change_set = self._ai_change_set
@@ -2640,12 +2638,14 @@ class VxpMainWindow(QWidget):
             event.accept()
             return
         if self.build_service.active:
-            answer = QMessageBox.question(
-                self, "Build in progress",
+            answer = ConfirmDialog.ask(
+                "Build in progress",
                 "A build is still running. Cancel it and exit?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                self,
+                confirm_text="Yes",
+                danger=True,
             )
-            if answer != QMessageBox.StandardButton.Yes:
+            if not answer:
                 event.ignore()
                 return
             self.build_service.cancel()
