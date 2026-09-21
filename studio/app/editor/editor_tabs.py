@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QFileDialog, QMenu, QMessageBox, QTabBar, QTabWidget, QToolButton, QWidget,
+    QFileDialog, QLabel, QMenu, QMessageBox, QTabBar, QTabWidget, QToolButton, QWidget,
 )
 
 from app.ui import palette
@@ -53,6 +53,34 @@ class _TabCloseButton(QToolButton):
         self.setAutoRaise(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         apply_icon(self, "close", CLOSE_GLYPH_SIZE, palette.TEXT_4)
+
+
+class _AITabStatusBadge(QLabel):
+    """Badge nhỏ trên tab nguồn cho biết tệp vừa được AI sửa hay tạo mới."""
+
+    LABELS = {
+        "modified": "AI Modified",
+        "created": "AI Created",
+    }
+
+    def __init__(self, state: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("AITabStatusBadge")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMargin(0)
+        self.set_state(state)
+
+    def set_state(self, state: str) -> None:
+        value = str(state or "").strip().lower()
+        if value not in self.LABELS:
+            raise ValueError(f"Unsupported AI tab state: {state}")
+        self.setProperty("aiState", value)
+        label = self.LABELS[value]
+        self.setText(f"● {label}")
+        self.setToolTip(label)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
 
 
 class StudioTabBar(QTabBar):
@@ -239,6 +267,46 @@ class EditorTabs(QTabWidget):
             if editor and editor.path and editor.path.resolve() == resolved:
                 return i, editor
         return None
+
+    def set_ai_file_status(self, path: str | Path, state: str) -> bool:
+        """Show an AI Created / AI Modified badge on an already-open file tab."""
+        resolved = Path(path).resolve()
+        found = self.find_editor(resolved)
+        if not found:
+            return False
+        index, _editor = found
+        value = str(state or "").strip().lower()
+        if value not in _AITabStatusBadge.LABELS:
+            raise ValueError(f"Unsupported AI tab state: {state}")
+
+        bar = self.tabBar()
+        badge = bar.tabButton(index, QTabBar.ButtonPosition.LeftSide)
+        if not isinstance(badge, _AITabStatusBadge):
+            badge = _AITabStatusBadge(value, bar)
+            bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, badge)
+        else:
+            badge.set_state(value)
+
+        label = _AITabStatusBadge.LABELS[value]
+        self.setTabToolTip(index, f"{resolved}\n{label}")
+        self.state_changed.emit()
+        return True
+
+    def clear_ai_file_status(self, path: str | Path) -> bool:
+        """Remove the transient AI badge while keeping the file tab open."""
+        resolved = Path(path).resolve()
+        found = self.find_editor(resolved)
+        if not found:
+            return False
+        index, _editor = found
+        bar = self.tabBar()
+        badge = bar.tabButton(index, QTabBar.ButtonPosition.LeftSide)
+        if isinstance(badge, _AITabStatusBadge):
+            bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, None)
+            badge.deleteLater()
+        self.setTabToolTip(index, str(resolved))
+        self.state_changed.emit()
+        return True
 
     def _connect_editor(self, editor: CodeEditor) -> None:
         editor.document().modificationChanged.connect(
