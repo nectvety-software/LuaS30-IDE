@@ -149,19 +149,46 @@ class EditorGroupManager(QWidget):
     def save_all(self) -> bool:
         return all(group.save_all() for group in self.groups)
 
-    def open_file(self, path: str | Path):
+    def open_file(self, path: str | Path, *, activate: bool = True):
         resolved = Path(path).resolve()
         for i, group in enumerate(self.groups):
             found = group.find_editor(resolved)
             if found:
-                self._active_group = i
-                group.setCurrentIndex(found[0])
+                if activate:
+                    self._active_group = i
+                    group.setCurrentIndex(found[0])
                 return found[1]
-        return self.active_tabs().open_file(resolved)
+        return self.active_tabs().open_file(resolved, activate=activate)
 
-    def open_file_in_group(self, group_index: int, path: str | Path):
-        self.set_active_group(group_index)
-        return self.active_tabs().open_file(path)
+    def open_file_in_group(
+        self,
+        group_index: int,
+        path: str | Path,
+        *,
+        activate: bool = True,
+    ):
+        if activate:
+            self.set_active_group(group_index)
+            return self.active_tabs().open_file(path, activate=True)
+        if not self.groups:
+            self.add_group()
+        target_index = max(0, min(int(group_index), len(self.groups) - 1))
+        return self.groups[target_index].open_file(path, activate=False)
+
+    def set_ai_file_status(self, path: str | Path, state: str) -> bool:
+        """Apply an AI status badge to the matching file tab in any editor group."""
+        resolved = Path(path).resolve()
+        for group in self.groups:
+            if group.find_editor(resolved):
+                return group.set_ai_file_status(resolved, state)
+        return False
+
+    def clear_ai_file_status(self, path: str | Path) -> bool:
+        resolved = Path(path).resolve()
+        for group in self.groups:
+            if group.find_editor(resolved):
+                return group.clear_ai_file_status(resolved)
+        return False
 
     def open_untitled_in_group(self, group_index: int, text: str = "", modified: bool = True):
         self.set_active_group(group_index)

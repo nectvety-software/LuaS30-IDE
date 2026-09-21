@@ -2230,12 +2230,23 @@ class VxpMainWindow(QWidget):
         self._show_ai_diff(self._ai_change_set, activate=True)
 
     def _reload_applied_editors(self, change_set: PreparedChangeSet) -> None:
+        """Reload and expose every AI-touched text file as an editor tab.
+
+        VS Code-style behavior: files that were already open are refreshed in-place;
+        files created or changed by the agent are opened as background tabs; then the
+        first successfully opened changed file becomes the active editor. This keeps
+        all AI work visible without creating duplicate tabs across editor groups.
+        """
         touched_design = False
+        opened_targets: list[Path] = []
+
         for change in change_set.changes:
             target = change.absolute_path.resolve()
             rel = str(change.relative_path or "").replace("\\", "/").lower()
             if rel.endswith("ui_design.json") or rel.startswith("assets/"):
                 touched_design = True
+
+            found_editor = None
             for group in self.tabs.groups:
                 found = group.find_editor(target)
                 if not found:
@@ -2243,9 +2254,28 @@ class VxpMainWindow(QWidget):
                 _index, editor = found
                 editor.setPlainText(change.after)
                 editor.document().setModified(False)
+                found_editor = editor
+                break
+
+            # Newly-created files and previously-closed files should immediately
+            # appear in the editor strip, just like files changed by VS Code agents.
+            editor = found_editor or self.tabs.open_file(target, activate=False)
+            if editor is not None:
+                self.tabs.set_ai_file_status(
+                    target,
+                    "modified" if change.existed else "created",
+                )
+                opened_targets.append(target)
+
         if self.session.root:
             self.index.set_root(self.session.root)
             self.explorer.tree.refresh()
+
+        # Put the first AI-touched source file in front after all tabs are created.
+        # open_file() reuses an existing tab, so this never duplicates a document.
+        if opened_targets:
+            self.tabs.open_file(opened_targets[0], activate=True)
+
         if touched_design:
             # AI vừa ghi thiết kế/asset — designer là widget sống nên canvas +
             # registry cũ sẽ giữ nguyên placeholder. Quét lại assets/ rồi nạp lại

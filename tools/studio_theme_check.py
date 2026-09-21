@@ -22,6 +22,8 @@ Ba nhóm kiểm tra:
 
   C. Render — dựng thật `MainWindow` + hộp thoại "Cấu hình MediaTek MRE SDK"
      bằng nền offscreen, quét khối sáng (rò theme sáng) và kiểm hình học.
+     Đồng thời dựng EditorTabs có `AI Modified` / `AI Created` để kiểm badge
+     không bị cắt, không làm tab rộng quá 240px và vẫn giữ nút đóng.
      Chạy trong `LUAS30_APPDATA` tạm nên KHÔNG đụng config thật của người dùng.
 
 `QT_QPA_FONTDIR` là BẮT BUỘC: thiếu nó Qt nạp 0 font, glyph thành ô vuông mà
@@ -312,6 +314,108 @@ def qt_close_red(pixmap, rect=None) -> int:
     return count
 
 
+def check_ai_tab_badges(app, out_dir: Path | None) -> None:
+    """AI Created / AI Modified: không bị cắt và không làm tab phình quá rộng."""
+    from PySide6.QtWidgets import QTabBar
+
+    from app.editor.editor_tabs import EditorTabs, _AITabStatusBadge
+
+    print("\n-- D. badge tệp do AI thay đổi --", flush=True)
+
+    tmp = Path(tempfile.mkdtemp(prefix="luas30_ai_tabs_"))
+    modified = tmp / "player_controller.lua"
+    created = tmp / "boss_combo.lua"
+    modified.write_text("return {}\n", encoding="utf-8")
+    created.write_text("return {}\n", encoding="utf-8")
+
+    tabs = EditorTabs()
+    tabs.resize(720, 220)
+    tabs.show()
+    tabs.ensurePolished()
+
+    tabs.open_file(modified)
+    tabs.open_file(created)
+    tabs.set_ai_file_status(modified, "modified")
+    tabs.set_ai_file_status(created, "created")
+    app.processEvents()
+
+    bar = tabs.tabBar()
+    expected = (
+        (modified, "AI Modified", "modified"),
+        (created, "AI Created", "created"),
+    )
+    for path, label, state in expected:
+        found = tabs.find_editor(path)
+        check(f"{label}: tìm thấy tab", found is not None)
+        if not found:
+            continue
+
+        index, _editor = found
+        badge = bar.tabButton(index, QTabBar.ButtonPosition.LeftSide)
+        check(
+            f"{label}: dùng _AITabStatusBadge",
+            isinstance(badge, _AITabStatusBadge),
+            f"type={type(badge).__name__ if badge else 'None'}",
+        )
+        if not isinstance(badge, _AITabStatusBadge):
+            continue
+
+        check(
+            f"{label}: đúng text",
+            badge.text() == label,
+            f"text={badge.text()!r}",
+        )
+        check(
+            f"{label}: đúng state",
+            badge.property("aiState") == state,
+            f"state={badge.property('aiState')!r}",
+        )
+
+        hint = badge.sizeHint()
+        check(
+            f"{label}: badge không bị cắt ngang",
+            badge.width() >= hint.width(),
+            f"w={badge.width()} hint={hint.width()}",
+        )
+        check(
+            f"{label}: badge không bị cắt dọc",
+            badge.height() >= hint.height(),
+            f"h={badge.height()} hint={hint.height()}",
+        )
+
+        rect = bar.tabRect(index)
+        check(
+            f"{label}: tab không rộng quá 240px",
+            rect.width() <= 240,
+            f"tab_w={rect.width()}",
+        )
+        check(
+            f"{label}: badge nằm trong chiều cao tab",
+            badge.height() <= rect.height(),
+            f"badge_h={badge.height()} tab_h={rect.height()}",
+        )
+
+        close_button = bar.tabButton(index, QTabBar.ButtonPosition.RightSide)
+        check(
+            f"{label}: vẫn giữ nút đóng tab",
+            close_button is not None,
+        )
+        check(
+            f"{label}: tooltip có trạng thái AI",
+            label in tabs.tabToolTip(index),
+            f"tooltip={tabs.tabToolTip(index)!r}",
+        )
+
+    shot = tabs.grab()
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        shot.save(str(out_dir / "ai_file_badges.png"))
+
+    tabs.close()
+    shutil = __import__("shutil")
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 def check_tab_close(app, out_dir: Path | None) -> None:
     """Nút đóng tab: phải là nút của Studio và phải ĐÓNG ĐƯỢC tab."""
     from PySide6.QtWidgets import QLabel, QTabBar
@@ -471,6 +575,7 @@ def render(out_dir: Path | None) -> None:
     dialog.close()
     window.close()
 
+    check_ai_tab_badges(app, out_dir)
     check_tab_close(app, out_dir)
 
     if shots:

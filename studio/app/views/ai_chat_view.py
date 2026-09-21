@@ -132,9 +132,10 @@ class ChatPromptEditor(QPlainTextEdit):
         super().__init__(parent)
         self.setObjectName("AIChatPrompt")
         self.setPlaceholderText("Mô tả những gì bạn muốn xây dựng...")
-        # Keep the composer compact so the transcript remains the dominant area.
-        self.setMinimumHeight(52)
-        self.setMaximumHeight(86)
+        # Compact but comfortable composer: enough room for a short coding prompt
+        # without stealing space from the transcript.
+        self.setMinimumHeight(70)
+        self.setMaximumHeight(132)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -249,8 +250,8 @@ class AIChatView(QWidget):
         self.tool_service = AIReadOnlyToolService(engine_root=self.engine_root)
         self.design_tool_service = AIDesignToolService()
         self.context_service = CodebaseContextService(self.engine_root)
-        self.setMinimumWidth(315)
-        self.setMaximumWidth(680)
+        self.setMinimumWidth(340)
+        self.setMaximumWidth(720)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -259,11 +260,11 @@ class AIChatView(QWidget):
         header = QFrame()
         header.setObjectName("AIChatHeader")
         row = QHBoxLayout(header)
-        row.setContentsMargins(10, 6, 8, 6)
-        row.setSpacing(4)
+        row.setContentsMargins(14, 9, 10, 9)
+        row.setSpacing(6)
         title_icon = QLabel()
         title_icon.setObjectName("AIChatHeaderIcon")
-        title_icon.setPixmap(font_icon("spark", 14, normal="palette.ACCENT").pixmap(14, 14))
+        title_icon.setPixmap(font_icon("spark", 16, normal="palette.ACCENT").pixmap(16, 16))
         row.addWidget(title_icon)
         row.addSpacing(4)
         title = QLabel("AI Trợ lý")
@@ -340,11 +341,11 @@ class AIChatView(QWidget):
         activity_layout.setContentsMargins(7, 5, 7, 5)
         activity_layout.setSpacing(4)
         activity_header = QHBoxLayout()
-        activity_title = QLabel("AI ACTIVITY · REASONING SUMMARY")
+        activity_title = QLabel("HOẠT ĐỘNG AGENT")
         activity_title.setObjectName("AIActivityTitle")
         activity_header.addWidget(activity_title)
         activity_header.addStretch(1)
-        activity_note = QLabel("high-level only")
+        activity_note = QLabel("tóm tắt · không hiển thị suy luận riêng tư")
         activity_note.setObjectName("AIActivityNote")
         activity_header.addWidget(activity_note)
         activity_layout.addLayout(activity_header)
@@ -564,8 +565,8 @@ class AIChatView(QWidget):
         context_card = QFrame()
         context_card.setObjectName("AIContextCard")
         context_card_layout = QVBoxLayout(context_card)
-        context_card_layout.setContentsMargins(10, 6, 10, 6)
-        context_card_layout.setSpacing(4)
+        context_card_layout.setContentsMargins(12, 8, 12, 8)
+        context_card_layout.setSpacing(6)
         context_head = QHBoxLayout()
         context_head.setSpacing(5)
         context_icon = QLabel()
@@ -600,21 +601,48 @@ class AIChatView(QWidget):
         composer = QFrame()
         composer.setObjectName("AIChatComposer")
         compose = QVBoxLayout(composer)
-        compose.setContentsMargins(10, 7, 10, 8)
-        compose.setSpacing(6)
+        compose.setContentsMargins(12, 9, 12, 9)
+        compose.setSpacing(7)
 
         self.prompt = ChatPromptEditor()
         self.prompt.submit_requested.connect(self.send)
         compose.addWidget(self.prompt)
 
-        footer = QHBoxLayout()
-        footer.setSpacing(6)
+        # Lightweight prompt toolbar. It keeps context/file actions close to the
+        # editor while leaving access/model controls on their own row.
+        prompt_tools = QHBoxLayout()
+        prompt_tools.setSpacing(5)
         attach_button = QToolButton()
-        attach_button.setObjectName("AIChatToolButton")
+        attach_button.setObjectName("AIComposerToolButton")
         apply_icon(attach_button, "connect", 14)
         attach_button.setToolTip("Đính kèm tệp đang mở vào câu hỏi")
         attach_button.clicked.connect(self._attach_active_file)
-        footer.addWidget(attach_button)
+        prompt_tools.addWidget(attach_button)
+
+        mention_button = QToolButton()
+        mention_button.setObjectName("AIComposerTextTool")
+        mention_button.setText("@")
+        mention_button.setToolTip("Chèn ký hiệu tham chiếu tệp / ngữ cảnh")
+        mention_button.clicked.connect(lambda: self.prompt.insertPlainText("@"))
+        prompt_tools.addWidget(mention_button)
+
+        code_button = QToolButton()
+        code_button.setObjectName("AIComposerTextTool")
+        code_button.setText("{ }")
+        code_button.setToolTip("Chèn khối code Lua")
+        code_button.clicked.connect(
+            lambda: self.prompt.insertPlainText("```lua" + chr(10) + chr(10) + "```")
+        )
+        prompt_tools.addWidget(code_button)
+
+        prompt_tools.addStretch(1)
+        composer_hint = QLabel("Shift + Enter để xuống dòng")
+        composer_hint.setObjectName("AIComposerHint")
+        prompt_tools.addWidget(composer_hint)
+        compose.addLayout(prompt_tools)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(6)
 
         self._access_mode = "edit_auto"
         self._access_rows: dict[str, AccessModeOption] = {}
@@ -626,7 +654,7 @@ class AIChatView(QWidget):
             "Plan mode: no edits/shell. Full access: automatically use tools, edit files and run terminal commands without confirmation."
         )
         self.access_mode_button.clicked.connect(self._show_access_mode_menu)
-        footer.addWidget(self.access_mode_button)
+        controls.addWidget(self.access_mode_button)
 
         self.access_mode_menu = QMenu(self)
         self.access_mode_menu.setObjectName("AIAccessMenu")
@@ -643,25 +671,33 @@ class AIChatView(QWidget):
             self._access_rows[mode_value] = option
         self._sync_access_mode_ui()
 
-        footer.addStretch(1)
-
         self.provider_label = QPushButton("")
         self.provider_label.setObjectName("AIProviderCompact")
         self.provider_label.clicked.connect(self.open_provider_settings)
-        footer.addWidget(self.provider_label)
+        controls.addWidget(self.provider_label, 1)
 
-        self.send_button = QPushButton("")
+        self.send_button = QPushButton("Gửi")
         self.send_button.setObjectName("AIChatSendIcon")
         self.send_button.setToolTip("Gửi")
         self.send_button.setProperty("running", False)
         apply_icon(self.send_button, "send", 14, "palette.ON_ACCENT")
         self.send_button.clicked.connect(self._send_or_stop)
-        footer.addWidget(self.send_button)
-        compose.addLayout(footer)
+        controls.addWidget(self.send_button)
+        compose.addLayout(controls)
 
+        status_row = QHBoxLayout()
+        status_row.setSpacing(5)
+        status_dot = QLabel("●")
+        status_dot.setObjectName("AIStatusDot")
+        status_row.addWidget(status_dot)
         self.status = QLabel("Ready")
         self.status.setObjectName("AIChatStatus")
-        compose.addWidget(self.status)
+        status_row.addWidget(self.status)
+        status_row.addStretch(1)
+        status_hint = QLabel("AI hỗ trợ lập trình LuaS30")
+        status_hint.setObjectName("AIStatusHint")
+        status_row.addWidget(status_hint)
+        compose.addLayout(status_row)
         root.addWidget(composer)
 
         self.activity_button.toggled.connect(self._on_activity_toggled)
@@ -1318,11 +1354,29 @@ class AIChatView(QWidget):
         if role == "user":
             self.start_frame.setVisible(False)
             self.transcript.setVisible(True)
-        label = "You" if role == "user" else "AI"
+
+        is_user = role == "user"
+        label = "Bạn" if is_user else "AI Trợ lý"
+        marker = "B" if is_user else "✦"
+        accent = palette.TEXT_3 if is_user else palette.ACCENT
+        card_bg = palette.BG_RAISED if is_user else palette.BG_ALT
         escaped = html.escape(str(text or "")).replace("\n", "<br>")
+
+        # QTextBrowser gives us selectable text and lightweight rich cards
+        # without introducing a widget-per-message performance cost.
+        card = (
+            '<table width="100%" cellspacing="0" cellpadding="0" style="'
+            f'background-color:{card_bg};border:1px solid {palette.BORDER_STRONG};">'
+            '<tr><td style="padding:9px 10px 5px 10px;">'
+            f'<span style="color:{accent};font-weight:700;">{marker}&nbsp;&nbsp;{label}</span>'
+            '</td></tr>'
+            '<tr><td style="padding:0 10px 10px 10px;'
+            f'color:{palette.TEXT_2};line-height:1.45;">{escaped}</td></tr>'
+            '</table><div style="height:7px;"></div>'
+        )
         cursor = self.transcript.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertHtml(f"<div><b>{label}</b><br>{escaped}</div><br>")
+        cursor.insertHtml(card)
         self.transcript.setTextCursor(cursor)
         self.transcript.ensureCursorVisible()
 
@@ -1427,13 +1481,15 @@ class AIChatView(QWidget):
         self.send_button.update()
         if self._agent_active:
             apply_icon(self.send_button, "stop", 13)
-            self.send_button.setToolTip("Stop AI")
+            self.send_button.setText("Dừng")
+            self.send_button.setToolTip("Dừng AI")
             self.thinking_frame.setVisible(True)
             self._tick_thinking()
             self._think_timer.start()
         else:
             apply_icon(self.send_button, "send", 14, "palette.ON_ACCENT")
-            self.send_button.setToolTip("Send")
+            self.send_button.setText("Gửi")
+            self.send_button.setToolTip("Gửi")
             self._think_timer.stop()
             self.thinking_frame.setVisible(False)
 
