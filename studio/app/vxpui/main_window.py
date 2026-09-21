@@ -958,6 +958,7 @@ class VxpMainWindow(QWidget):
                 name,
                 metadata=config.project_metadata(),
                 sdk_metadata=config.sdk_metadata(),
+                template_id=config.template_id,
             )
         except FileExistsError as exc:
             NoticeDialog("Dự án đã tồn tại", f"Đã có dự án trùng tên:\n{exc}", self, error=True).exec()
@@ -977,6 +978,7 @@ class VxpMainWindow(QWidget):
             f"Project created: {info.root}"
             + (f" | AppID {appid}" if appid else "")
             + f" | {config.chipset_id} | {config.screen_width}x{config.screen_height}"
+            + f" | {config.template_label}"
         )
 
     def open_project_dialog(self) -> None:

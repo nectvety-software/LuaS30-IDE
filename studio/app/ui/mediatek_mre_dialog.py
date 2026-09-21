@@ -30,6 +30,8 @@ class MediaTekProjectConfig:
     ram_label: str
     compat_profile: str
     mre_api: str
+    template_id: str
+    template_label: str
 
     def project_metadata(self) -> dict:
         return {
@@ -48,6 +50,8 @@ class MediaTekProjectConfig:
             "mre_api": self.mre_api,
             "single_vxp": True,
             "project_wizard": "mediatek-mre-sdk-v1",
+            "project_template": self.template_id,
+            "project_template_label": self.template_label,
         }
 
     def sdk_metadata(self) -> dict:
@@ -71,8 +75,15 @@ class MediaTekProjectConfig:
             "heap_label": self.ram_label,
             "compat_profile": self.compat_profile,
             "mre_api": self.mre_api,
+            "project_template": self.template_id,
+            "project_template_label": self.template_label,
         }
 
+
+PROJECT_TEMPLATES = (
+    ("basic", "Basic Starter  ·  canvas + input tối giản"),
+    ("game-ui", "Game UI Starter  ·  splash + menu + HUD + pause"),
+)
 
 RESOLUTIONS = (
     ("240x320", "240x320  (QVGA - Chuẩn Nokia)", 240, 320),
@@ -230,6 +241,12 @@ class MediaTekMREConfigDialog(QDialog):
             self.ram.addItem(label, value)
         self.ram.setCurrentIndex(self.ram.findData(1024))
 
+        self.template = QComboBox()
+        self.template.setObjectName("MRECombo")
+        for template_id, label in PROJECT_TEMPLATES:
+            self.template.addItem(label, template_id)
+        self.template.setCurrentIndex(self.template.findData("game-ui"))
+
         self.path_preview = QLabel()
         self.path_preview.setObjectName("MREPathPreview")
         self.path_preview.setWordWrap(True)
@@ -242,23 +259,26 @@ class MediaTekMREConfigDialog(QDialog):
         self._label(grid, "Nhà phát triển (VENDOR)", 2, 0, 1, 2)
         grid.addWidget(self.vendor, 3, 0, 1, 2)
 
-        self._label(grid, "Màn hình (Resolution)", 4, 0)
-        self._label(grid, "Chipset MediaTek", 4, 1)
-        grid.addWidget(self.resolution, 5, 0)
-        grid.addWidget(self.chipset, 5, 1)
+        self._label(grid, "Mẫu dự án (Template)", 4, 0, 1, 2)
+        grid.addWidget(self.template, 5, 0, 1, 2)
 
-        self._label(grid, "Dung lượng Heap RAM cấp phát", 6, 0, 1, 2)
-        grid.addWidget(self.ram, 7, 0, 1, 2)
+        self._label(grid, "Màn hình (Resolution)", 6, 0)
+        self._label(grid, "Chipset MediaTek", 6, 1)
+        grid.addWidget(self.resolution, 7, 0)
+        grid.addWidget(self.chipset, 7, 1)
+
+        self._label(grid, "Dung lượng Heap RAM cấp phát", 8, 0, 1, 2)
+        grid.addWidget(self.ram, 9, 0, 1, 2)
 
         hint = QLabel(
-            "AppID được tạo tự động. MTK6260 mặc định dùng profile Nokia 225 / "
-            "S30+ native; đường dẫn MRE SDK dùng cấu hình chung trong Settings."
+            "Game UI Starter có sẵn splash, menu, HUD, pause và game-over. "
+            "AppID được tạo tự động; đường dẫn MRE SDK dùng cấu hình chung trong Settings."
         )
         hint.setObjectName("MREDialogHint")
         hint.setWordWrap(True)
-        grid.addWidget(hint, 8, 0, 1, 2)
+        grid.addWidget(hint, 10, 0, 1, 2)
 
-        grid.addWidget(self.path_preview, 9, 0, 1, 2)
+        grid.addWidget(self.path_preview, 11, 0, 1, 2)
         root.addWidget(body)
 
         footer = QFrame()
@@ -373,4 +393,6 @@ class MediaTekMREConfigDialog(QDialog):
             ram_label=self.ram.currentText(),
             compat_profile=str(compat),
             mre_api=str(api),
+            template_id=str(self.template.currentData() or "basic"),
+            template_label=self.template.currentText(),
         )

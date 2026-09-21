@@ -18,6 +18,11 @@ _RESERVED_NAMES = {
     *(f"LPT{i}" for i in range(1, 10)),
 }
 
+PROJECT_TEMPLATE_DIRS = {
+    "basic": "basic",
+    "game-ui": "GameUIStarter",
+}
+
 @dataclass(slots=True)
 class ProjectInfo:
     root: Path
@@ -74,13 +79,23 @@ class ProjectSession(QObject):
     def project_path(self, name: str) -> Path:
         return self.default_projects_root / self.validate_project_name(name)
 
-    def create_project(self, name: str, metadata: dict | None = None, sdk_metadata: dict | None = None) -> ProjectInfo:
+    def create_project(
+        self,
+        name: str,
+        metadata: dict | None = None,
+        sdk_metadata: dict | None = None,
+        template_id: str = "basic",
+    ) -> ProjectInfo:
         name = self.validate_project_name(name)
         destination = self.project_path(name)
         if destination.exists():
             raise FileExistsError(destination)
 
-        template = self.engine_root / "templates" / "basic"
+        template_key = str(template_id or "basic").strip().lower()
+        template_dir = PROJECT_TEMPLATE_DIRS.get(template_key)
+        if not template_dir:
+            raise ValueError(f"Unknown project template: {template_id}")
+        template = self.engine_root / "templates" / template_dir
         if not template.is_dir():
             raise FileNotFoundError(f"Project template not found: {template}")
 
@@ -101,6 +116,7 @@ class ProjectSession(QObject):
                 appid = payload.get("appid")
                 payload.update(dict(metadata))
                 payload["name"] = name
+                payload["project_template"] = template_key
                 if appid is not None:
                     payload["appid"] = appid
                 descriptor.write_text(
@@ -111,8 +127,10 @@ class ProjectSession(QObject):
         if sdk_metadata:
             sdk_dir = destination / ".luas30"
             sdk_dir.mkdir(parents=True, exist_ok=True)
+            sdk_payload = dict(sdk_metadata)
+            sdk_payload["project_template"] = template_key
             (sdk_dir / "mre_sdk.json").write_text(
-                json.dumps(dict(sdk_metadata), indent=2, ensure_ascii=False) + "\n",
+                json.dumps(sdk_payload, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
 

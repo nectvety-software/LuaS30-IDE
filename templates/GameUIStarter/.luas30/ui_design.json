@@ -1,0 +1,36 @@
+{
+  "format": "LuaS30 UI Design",
+  "version": 2,
+  "canvas": {
+    "width": 240,
+    "height": 320
+  },
+  "current": "menu",
+  "screens": [
+    {
+      "id": "splash",
+      "name": "Splash",
+      "items": []
+    },
+    {
+      "id": "menu",
+      "name": "Main Menu",
+      "items": []
+    },
+    {
+      "id": "game",
+      "name": "Game HUD",
+      "items": []
+    },
+    {
+      "id": "pause",
+      "name": "Pause",
+      "items": []
+    },
+    {
+      "id": "gameover",
+      "name": "Game Over",
+      "items": []
+    }
+  ]
+}
