@@ -175,6 +175,21 @@ class EditorGroupManager(QWidget):
         target_index = max(0, min(int(group_index), len(self.groups) - 1))
         return self.groups[target_index].open_file(path, activate=False)
 
+    def set_ai_file_status(self, path: str | Path, state: str) -> bool:
+        """Apply an AI status badge to the matching file tab in any editor group."""
+        resolved = Path(path).resolve()
+        for group in self.groups:
+            if group.find_editor(resolved):
+                return group.set_ai_file_status(resolved, state)
+        return False
+
+    def clear_ai_file_status(self, path: str | Path) -> bool:
+        resolved = Path(path).resolve()
+        for group in self.groups:
+            if group.find_editor(resolved):
+                return group.clear_ai_file_status(resolved)
+        return False
+
     def open_untitled_in_group(self, group_index: int, text: str = "", modified: bool = True):
         self.set_active_group(group_index)
         editor = self.active_tabs().new_file()
