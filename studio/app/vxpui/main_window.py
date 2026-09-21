@@ -2308,6 +2308,7 @@ class VxpMainWindow(QWidget):
             self.show_status(f"AI code apply failed: {exc}")
             return
         self._reload_applied_editors(change_set)
+        self._open_ai_touched_tabs(change_set)
         paths = [path.relative_to(change_set.project_root).as_posix() for path in applied]
         files = [
             {"path": c.relative_path, "added": c.added_lines, "removed": c.removed_lines}
@@ -2370,6 +2371,7 @@ class VxpMainWindow(QWidget):
                 before=text, after=text)],
         )
         self._reload_applied_editors(single)
+        self._open_ai_touched_tabs(single)
         view.set_change_set(change_set if change_set.changes else None)
         if not change_set.changes:
             view.mark_applied(backup)
