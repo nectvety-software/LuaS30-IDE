@@ -1,6 +1,26 @@
 from pathlib import Path
+import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+
+print("== Python syntax gate ==")
+compile_result = subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "compileall",
+        "-q",
+        str(ROOT / "studio"),
+        str(ROOT / "tools"),
+    ],
+    cwd=ROOT,
+    check=False,
+)
+if compile_result.returncode != 0:
+    print("FAIL: python -m compileall -q studio tools")
+    raise SystemExit(compile_result.returncode)
+print("PASS: python -m compileall -q studio tools")
 chat = (ROOT / "studio/app/views/ai_chat_view.py").read_text(encoding="utf-8")
 theme = (ROOT / "studio/app/ui/theme.py").read_text(encoding="utf-8")
 
