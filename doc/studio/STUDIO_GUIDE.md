@@ -270,10 +270,15 @@ Mục Credits phải đồng bộ với `doc/legal/THIRD_PARTY_NOTICES.md`.
 ## Theme & palette
 
 Chuẩn thiết kế của Studio lấy từ hộp thoại **Cấu hình MediaTek MRE SDK**
-(`studio/app/ui/mediatek_mre_dialog.py` + khối QSS `MREDialog*`): nền slate xanh
-đêm (`#07101f` lõm / `#111827` mặt phẳng), viền `#273449`–`#334155`, chữ sáng
-`#f8fafc`, accent **cam** `#f59e0b`, bo góc 8–12px, ô nhập cao 34px. Mọi bề mặt
-khác của Studio được kéo về cùng bảng màu đó.
+(`studio/app/ui/mediatek_mre_dialog.py` + khối QSS `MREDialog*`): nền slate
+xanh đêm (`#111122` lõm / `#19192E` mặt phẳng), viền `#24243D`–`#3A3A56`, chữ
+sáng `#D8DBE7`, accent **cam** `#FF8A00`, bo góc 6–12px, ô nhập cao 34px. Mọi
+bề mặt khác của Studio được kéo về cùng bảng màu đó.
+
+Từ 1.0.1, TOÀN BỘ hộp thoại modal dựng trên họ `CustomDialog` với custom Title
+Bar bo góc 12px theo đúng chuẩn này — xem
+[`MODAL_TITLEBAR_1_0_1.md`](MODAL_TITLEBAR_1_0_1.md) (kèm ngoại lệ: cửa sổ giả
+lập và hộp thoại chọn thư mục "Mở dự án" của Windows).
 
 ### Một nguồn màu duy nhất
 
@@ -297,7 +302,8 @@ Muốn một vùng "sâu hơn" thì lùi về `BG_INK`, muốn "nổi hơn" thì
 `BG_PRESSED`. Ô nhập, editor, terminal, canvas dùng `BG_INK`; panel và dialog
 dùng `BG_SURFACE`; menu/popup/toolbar dùng `BG_RAISED`.
 
-Bo góc chỉ có **ba** giá trị: 6px (ô điều khiển), 8px (card), 12px (dialog).
+Bo góc chỉ có **bốn** giá trị: 6px (ô điều khiển), 8px (card nhỏ), 10px
+(pill/composer), 12px (dialog, khung lớn).
 
 ### Màu chrome và màu nội dung — không được lẫn
 

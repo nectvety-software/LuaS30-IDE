@@ -66,12 +66,12 @@ QScrollBar:horizontal { height:0px; min-height:0px; max-height:0px; margin:0px; 
 QScrollBar::handle, QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page { width:0px; height:0px; border:none; background:transparent; }
 QAbstractScrollArea::corner { width:0px; height:0px; background:transparent; }
 QToolTip { background:#24243D; color:#D8DBE7; border:1px solid #303049; border-radius:4px; padding:4px; }
-/* CustomDialog enterprise — frameless, shadow, rounded */
-#DialogRoot { background:#19192E; border:1px solid #303049; border-radius:10px; }
-#DialogTitleBar { background:#111122; border-bottom:1px solid #24243D; border-top-left-radius:10px; border-top-right-radius:10px; }
+/* CustomDialog enterprise — frameless, shadow, bo góc 12px đồng bộ MREDialogCard */
+#DialogRoot { background:#19192E; border:1px solid #3A3A56; border-radius:12px; }
+#DialogTitleBar { background:#111122; border-bottom:1px solid #24243D; border-top-left-radius:12px; border-top-right-radius:12px; }
 #DialogTitleText { color:#D8DBE7; font-weight:600; font-size:13px; }
 #DialogBody { background:#19192E; }
-#DialogFooter { background:#111122; border-top:1px solid #24243D; border-bottom-left-radius:10px; border-bottom-right-radius:10px; }
+#DialogFooter { background:#111122; border-top:1px solid #24243D; border-bottom-left-radius:12px; border-bottom-right-radius:12px; }
 #DialogMinButton, #DialogMaxButton { background:transparent; border:none; border-radius:0px; }
 #DialogCloseButton { background:transparent; border:none; border-radius:0px; }
 #DialogCloseButton:hover { background:#C94B5B; }

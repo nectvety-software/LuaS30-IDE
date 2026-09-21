@@ -6,11 +6,12 @@ import shutil
 from PySide6.QtCore import Qt, QSize, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+    QPushButton, QSplitter, QVBoxLayout, QWidget,
 )
 
 from app.ui.icons import apply_icon
+from app.vxpui.custom_dialog import ConfirmDialog, FilePickerDialog, NoticeDialog
 
 IMAGE = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
 OPTIMIZABLE = {".png", ".jpg", ".jpeg", ".bmp"}
@@ -124,7 +125,7 @@ class AssetsView(QWidget):
         directory = self.assets_dir()
         if not directory:
             return
-        files, _ = QFileDialog.getOpenFileNames(
+        files = FilePickerDialog.get_open_file_names(
             self, "Import assets", str(Path.home()),
             "Assets (*.png *.jpg *.jpeg *.bmp *.gif *.mp3 *.wav *.aac *.amr *.mid *.midi *.txt *.bin *.dat);;All Files (*)",
         )
@@ -168,9 +169,10 @@ class AssetsView(QWidget):
         path = self.selected_path()
         if not path:
             return
-        if QMessageBox.question(
-            self, "Remove asset", f"Delete {path.name} from this project?"
-        ) == QMessageBox.StandardButton.Yes:
+        if ConfirmDialog.ask(
+            "Remove asset", f"Delete {path.name} from this project?",
+            self, confirm_text="Yes", danger=True,
+        ):
             path.unlink(missing_ok=True)
             self.refresh()
             self.preview_label.setPixmap(QPixmap())
@@ -180,18 +182,19 @@ class AssetsView(QWidget):
     def optimize_selected(self) -> None:
         path = self.selected_path()
         if not path:
-            QMessageBox.information(self, "Optimize Asset", "Select an image first.")
+            NoticeDialog("Optimize Asset", "Select an image first.", self).exec()
             return
         if path.suffix.lower() not in OPTIMIZABLE:
-            QMessageBox.information(
-                self, "Optimize Asset",
+            NoticeDialog(
+                "Optimize Asset",
                 "Only PNG/JPG/BMP images are optimized by the built-in safe optimizer.",
-            )
+                self,
+            ).exec()
             return
 
         image = QImage(str(path))
         if image.isNull():
-            QMessageBox.warning(self, "Optimize Asset", "The selected image could not be decoded.")
+            NoticeDialog("Optimize Asset", "The selected image could not be decoded.", self, warning=True).exec()
             return
 
         before = path.stat().st_size
@@ -202,7 +205,7 @@ class AssetsView(QWidget):
         quality = 88 if fmt == "JPEG" else -1
         if not image.save(str(temp), fmt.encode("ascii"), quality):
             temp.unlink(missing_ok=True)
-            QMessageBox.warning(self, "Optimize Asset", "Qt could not re-encode this image.")
+            NoticeDialog("Optimize Asset", "Qt could not re-encode this image.", self, warning=True).exec()
             return
 
         after = temp.stat().st_size
@@ -212,13 +215,15 @@ class AssetsView(QWidget):
             temp.replace(path)
             backup.unlink(missing_ok=True)
             self.refresh()
-            QMessageBox.information(
-                self, "Optimize Asset",
+            NoticeDialog(
+                "Optimize Asset",
                 f"Optimized {path.name}: {before / 1024:.1f} KB -> {after / 1024:.1f} KB.",
-            )
+                self,
+            ).exec()
         else:
             temp.unlink(missing_ok=True)
-            QMessageBox.information(
-                self, "Optimize Asset",
+            NoticeDialog(
+                "Optimize Asset",
                 "The re-encoded image was not smaller, so the original file was kept.",
-            )
+                self,
+            ).exec()

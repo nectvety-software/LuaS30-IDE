@@ -32,6 +32,7 @@ doc/
 
 - [`getting-started/QUICKSTART.md`](getting-started/QUICKSTART.md) — chạy Studio, tạo project và build đầu tiên.
 - [`studio/STUDIO_GUIDE.md`](studio/STUDIO_GUIDE.md) — hướng dẫn giao diện Studio.
+- [`studio/MODAL_TITLEBAR_1_0_1.md`](studio/MODAL_TITLEBAR_1_0_1.md) — chuẩn hộp thoại modal custom Title Bar + ngoại lệ.
 - [`reference/API.md`](reference/API.md) — API Lua `engine.*`.
 - [`build/BUILD_VXP.md`](build/BUILD_VXP.md) — pipeline build `.vxp`.
 

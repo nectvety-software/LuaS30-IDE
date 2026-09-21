@@ -18,7 +18,7 @@ from PySide6.QtCore import QDateTime, QEvent, QPoint, QSize, Qt, QUrl, QTimer
 from PySide6.QtGui import QAction, QCursor, QDesktopServices, QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QMenu, QMenuBar,
-    QMessageBox, QPushButton, QSplitter, QStackedWidget, QTabWidget,
+    QPushButton, QSplitter, QStackedWidget, QTabWidget,
     QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -43,6 +43,7 @@ from app.vxpui.assets_studio_window import AssetsStudioWindow
 from app.vxpui.custom_dialog import (
     ConfirmDialog,
     CustomDialog,
+    FilePickerDialog,
     NoticeDialog,
     RunSessionDialog,
     TextInputDialog,
@@ -982,17 +983,18 @@ class VxpMainWindow(QWidget):
         )
 
     def open_project_dialog(self) -> None:
+        # Hộp thoại chọn THƯ MỤC của Windows (native): nhanh và quen thuộc hơn
+        # cây tự dựng khi cần dò tới thư mục dự án sâu.
         folder = QFileDialog.getExistingDirectory(
             self,
             "Mở thư mục dự án LuaS30",
             str(self.session.root or self.session.default_projects_root),
-            QFileDialog.Option.ShowDirsOnly,
         )
         if folder:
             self._switch_project(Path(folder))
 
     def _open_file_dialog(self, _unused: bool = False) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        path = FilePickerDialog.get_open_file_name(
             self, "Open file",
             str(self.session.root or self.session.default_projects_root),
             "Source Files (*.lua *.c *.h *.json *.txt *.md);;All Files (*)",

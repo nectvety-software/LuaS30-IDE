@@ -388,6 +388,14 @@ theo tên tệp tài liệu gốc.
   "Dự án gần đây" + nút "Xem tất cả →"; "Dự án" mở toàn bộ lưới "Tất cả dự
   án"; "Tài liệu" mở `doc/INDEX.md`. Verify: studio_theme check PASS,
   57/57 validators PASS, render offscreen 2 chế độ đã soi.
+- Mọi hộp thoại modal bỏ thanh tiêu đề mặc định của hệ điều hành, dùng custom
+  Title Bar theo chuẩn hộp thoại "Cấu hình MediaTek MRE SDK" (ngoại trừ cửa sổ
+  giả lập): ~30 chỗ `QMessageBox`/`QInputDialog`/`QColorDialog`/`QFileDialog`
+  chuyển sang `NoticeDialog`/`ConfirmDialog`/`TextInputDialog`/`ColorPickerDialog`/
+  `FilePickerDialog`; `AboutDialog` + `SetupDialog` dựng lại trên nền
+  `CustomDialog`; `FilePickerDialog` thêm chế độ lưu tệp (ghi đè có xác nhận).
+  Verify: 57/57 validators + studio_theme check PASS, render offscreen 9 hộp
+  thoại đã soi từng ảnh, quét CJK sạch.
 
 
 ## 1.15.0 — AI Workbench v1

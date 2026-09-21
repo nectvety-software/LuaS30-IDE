@@ -11,7 +11,8 @@ bản gọn hơn nhưng giữ nguyên API mà `properties_panel.py` gọi tới:
     btn.color() -> QColor
 
 Popup gồm: lưới màu dựng sẵn (bảng màu thiết bị S30+ 16 màu + thang xám) và ô
-nhập HEX. Nút "Tuỳ chọn…" mở QColorDialog của hệ điều hành khi cần chọn kỹ.
+nhập HEX. Nút "Tuỳ chọn…" mở ColorPickerDialog frameless (custom Title Bar,
+không dùng thanh tiêu đề hệ điều hành) khi cần chọn kỹ.
 """
 
 from __future__ import annotations
@@ -19,11 +20,12 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QColorDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QWidget,
 )
 
 from app.ui import palette
+from app.vxpui.custom_dialog import ColorPickerDialog
 
 # 16 màu hay dùng cho UI máy S30+ (đọc rõ trên màn hình 240x320 độ tương phản thấp)
 PRESET_COLORS = [
@@ -100,10 +102,10 @@ class ColorPickerPopup(QFrame):
             self.hex_edit.setText(self._color.name().upper())
 
     def _open_native(self):
-        options = QColorDialog.ColorDialogOption.ShowAlphaChannel if self._with_alpha \
-            else QColorDialog.ColorDialogOption(0)
-        color = QColorDialog.getColor(self._color, self.parentWidget(),
-                                      "Chọn màu", options)
+        color = ColorPickerDialog.get_color(
+            self._color, self.parentWidget(),
+            title="Chọn màu", show_alpha=self._with_alpha,
+        )
         if color.isValid():
             self._pick(color)
 

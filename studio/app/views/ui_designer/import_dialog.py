@@ -17,9 +17,11 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget,
 )
+
+from app.vxpui.custom_dialog import FilePickerDialog
 
 from .asset_import import (
     KIND_AUDIO, KIND_IMAGE, TARGETS, TARGET_DIRS, classify, file_filter,
@@ -135,7 +137,7 @@ class ImportAssetDialog(ModalDialog):
 
     # ------------------------------------------------ chọn tệp
     def _pick_files(self):
-        files, _ = QFileDialog.getOpenFileNames(
+        files = FilePickerDialog.get_open_file_names(
             self, "Chọn tệp để nhập", str(Path.home()), file_filter(self.kind))
         if files:
             self._set_files([Path(f) for f in files])

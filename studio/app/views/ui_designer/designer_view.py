@@ -24,9 +24,11 @@ from app.ui import palette
 from PySide6.QtCore import QSize, Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QToolBar,
+    QDialog, QHBoxLayout, QLabel, QToolBar,
     QVBoxLayout, QWidget,
 )
+
+from app.vxpui.custom_dialog import NoticeDialog
 
 from . import icons_compat as icons
 from .asset_import import (
@@ -465,10 +467,11 @@ class UIDesignerWidget(QWidget):
 
     def _require_project(self) -> bool:
         if self.store.root is None or not self.store.root.is_dir():
-            QMessageBox.information(
-                self, "Chưa mở project",
+            NoticeDialog(
+                "Chưa mở project",
                 "Hãy mở một project trước — thiết kế và tài nguyên đều phải "
-                "được lưu trong project đó.")
+                "được lưu trong project đó.", self,
+            ).exec()
             return False
         return True
 

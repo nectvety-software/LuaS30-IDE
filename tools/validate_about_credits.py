@@ -142,14 +142,18 @@ def check_render() -> None:
 
     print("-- B. render offscreen --", flush=True)
     app = QApplication(sys.argv)
-    app.setStyleSheet(APP_STYLE)
+    # App thật (studio/main.py) nạp APP_STYLE + dark_theme.qss gộp một lần;
+    # Chrome frameless của CustomDialog sống nhờ dark_theme.qss, nên validator
+    # phải mô phỏng đúng cả hai lớp, nếu không sẽ soi theme ở môi trường giả.
+    qss = ROOT / "studio" / "app" / "vxpui" / "resources" / "dark_theme.qss"
+    app.setStyleSheet(APP_STYLE + "\n" + qss.read_text(encoding="utf-8"))
 
     check("nạp được font hệ thống (cần QT_QPA_FONTDIR)",
           len(QFontDatabase.families()) > 0, f"families={len(QFontDatabase.families())}")
     check("hằng số khớp nguồn tĩnh", C == COPYRIGHT and W == WEBSITE, f"{C!r} {W!r}")
 
     dlg = AboutDialog(ROOT)          # crash-test thứ tự dựng widget
-    dlg.resize(720, 560)
+    dlg.resize(720, 620)
     dlg.show()
     app.processEvents()
 

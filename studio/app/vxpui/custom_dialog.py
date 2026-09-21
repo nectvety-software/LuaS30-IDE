@@ -560,6 +560,7 @@ class FilePickerDialog(CustomDialog):
     MODE_FILE = "file"
     MODE_FILES = "files"
     MODE_DIRECTORY = "directory"
+    MODE_SAVE = "save"
 
     def __init__(
         self,
@@ -640,7 +641,12 @@ class FilePickerDialog(CustomDialog):
         self.add_body_widget(self.selection_label)
 
         cancel = self.add_footer_button("Hủy", ghost=True, icon_name="fa5s.times")
-        accept_text = "Chọn thư mục" if mode == self.MODE_DIRECTORY else "Mở"
+        if self.mode == self.MODE_DIRECTORY:
+            accept_text = "Chọn thư mục"
+        elif self.mode == self.MODE_SAVE:
+            accept_text = "Lưu"
+        else:
+            accept_text = "Mở"
         confirm = self.add_footer_button(accept_text, accent=True, icon_name="fa5s.check")
         cancel.clicked.connect(self.reject)
         confirm.clicked.connect(self._accept_selection)
@@ -733,6 +739,13 @@ class FilePickerDialog(CustomDialog):
         path = Path(self.model.filePath(index))
         if path.is_dir():
             self._set_directory(path)
+        elif self.mode == self.MODE_SAVE:
+            if ConfirmDialog.ask(
+                "Tệp đã tồn tại", f"Ghi đè lên {path.name}?",
+                self, confirm_text="Ghi đè", danger=True,
+            ):
+                self._selected_paths = [str(path.resolve())]
+                self.accept()
         elif self.mode != self.MODE_DIRECTORY:
             self._selected_paths = [str(path.resolve())]
             self.accept()
@@ -756,6 +769,24 @@ class FilePickerDialog(CustomDialog):
 
     def _accept_selection(self) -> None:
         selected = [Path(self.model.filePath(index)) for index in self._selected_indexes()]
+        if self.mode == self.MODE_SAVE:
+            files = [path for path in selected if path.is_file()]
+            target = files[0] if files else None
+            if target is None:
+                typed = Path(self.path_edit.text().strip()).expanduser()
+                if typed.suffix and not typed.is_dir():
+                    target = typed if typed.is_absolute() else self._current_directory() / typed.name
+            if target is None:
+                NoticeDialog("Chưa đặt tên tệp", "Chọn tệp hoặc nhập đường dẫn đầy đủ (kèm tên mới) để lưu.", self, warning=True).exec()
+                return
+            if target.exists() and not ConfirmDialog.ask(
+                "Tệp đã tồn tại", f"Ghi đè lên {target.name}?",
+                self, confirm_text="Ghi đè", danger=True,
+            ):
+                return
+            self._selected_paths = [str(target.resolve())]
+            self.accept()
+            return
         if self.mode == self.MODE_DIRECTORY:
             directory = next((path for path in selected if path.is_dir()), self._current_directory())
             self._selected_paths = [str(directory.resolve())]
@@ -824,6 +855,25 @@ class FilePickerDialog(CustomDialog):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             return dialog.selected_paths
         return []
+
+    @classmethod
+    def get_save_file_name(
+        cls,
+        parent=None,
+        title: str = "Lưu tệp",
+        start_directory: str | Path | None = None,
+        name_filter: str = "Tất cả tệp (*.*)",
+    ) -> str:
+        dialog = cls(
+            title,
+            parent,
+            start_directory=start_directory,
+            name_filter=name_filter,
+            mode=cls.MODE_SAVE,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_paths:
+            return dialog.selected_paths[0]
+        return ""
 
 
 class RunSessionDialog(CustomDialog):

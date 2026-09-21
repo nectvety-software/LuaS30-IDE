@@ -5,13 +5,14 @@ from pathlib import Path
 from PySide6.QtCore import QSortFilterProxyModel, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
-    QSplitter, QTableView, QVBoxLayout, QWidget, QInputDialog,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QSplitter, QTableView, QVBoxLayout, QWidget,
 )
 
 from app.editor.project_tree import ProjectTree
 from app.services.project_library import ProjectLibraryService, ProjectRecord
 from app.ui.icons import apply_icon
+from app.vxpui.custom_dialog import ConfirmDialog, FilePickerDialog, NoticeDialog, TextInputDialog
 
 
 class ProjectFilterModel(QSortFilterProxyModel):
@@ -261,14 +262,14 @@ class ProjectManagerView(QWidget):
             self.open_project_requested.emit(path)
 
     def import_project(self) -> None:
-        source = QFileDialog.getExistingDirectory(self, "Import LuaS30 Project")
+        source = FilePickerDialog.get_existing_directory(self, "Import LuaS30 Project")
         if not source:
             return
         source_path = Path(source)
         if not (source_path / "project.json").is_file():
-            QMessageBox.warning(self, "Import Project", "Selected folder has no project.json.")
+            NoticeDialog("Import Project", "Selected folder has no project.json.", self, warning=True).exec()
             return
-        name, ok = QInputDialog.getText(self, "Import Project", "Storage project name:", text=source_path.name)
+        name, ok = TextInputDialog.get_text(self, "Import Project", "Storage project name:", text=source_path.name)
         if not ok:
             return
         try:
@@ -277,13 +278,13 @@ class ProjectManagerView(QWidget):
             self._select_path(destination)
             self.status_message.emit(f"Imported project: {destination.name}")
         except Exception as exc:
-            QMessageBox.critical(self, "Import Project", str(exc))
+            NoticeDialog("Import Project", str(exc), self, error=True).exec()
 
     def duplicate_selected(self) -> None:
         source = self.selected_path()
         if not source:
             return
-        name, ok = QInputDialog.getText(self, "Duplicate Project", "New project name:", text=f"{source.name}_copy")
+        name, ok = TextInputDialog.get_text(self, "Duplicate Project", "New project name:", text=f"{source.name}_copy")
         if not ok:
             return
         self.duplicate_project_requested.emit(source, name.strip())
@@ -292,7 +293,7 @@ class ProjectManagerView(QWidget):
         source = self.selected_path()
         if not source:
             return
-        name, ok = QInputDialog.getText(self, "Rename Project", "New project name:", text=source.name)
+        name, ok = TextInputDialog.get_text(self, "Rename Project", "New project name:", text=source.name)
         if not ok or name.strip() == source.name:
             return
         self.rename_project_requested.emit(source, name.strip())
@@ -301,11 +302,11 @@ class ProjectManagerView(QWidget):
         source = self.selected_path()
         if not source:
             return
-        if QMessageBox.question(
-            self, "Delete Project",
+        if not ConfirmDialog.ask(
+            "Delete Project",
             f"Delete managed project '{source.name}'?\n\nThis removes the entire project folder and cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) != QMessageBox.StandardButton.Yes:
+            self, confirm_text="Yes", danger=True,
+        ):
             return
         self.delete_project_requested.emit(source)
 

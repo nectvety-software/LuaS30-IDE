@@ -5,12 +5,13 @@ import sys
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QComboBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QVBoxLayout, QWidget,
 )
 
 from app.core.paths import tool_python
 from app.ui.icons import apply_icon
+from app.vxpui.custom_dialog import FilePickerDialog
 
 
 STARTUP_MODES = (
@@ -273,7 +274,7 @@ class SettingsView(QWidget):
         )
 
     def _browse_toolchain(self) -> None:
-        path = QFileDialog.getExistingDirectory(
+        path = FilePickerDialog.get_existing_directory(
             self,
             "Select ARM Toolchain Root",
             self.toolchain_root.text().strip() or str(self.engine_root),
@@ -338,7 +339,7 @@ class SettingsView(QWidget):
         )
 
     def _browse_mre_sdk(self) -> None:
-        path = QFileDialog.getExistingDirectory(
+        path = FilePickerDialog.get_existing_directory(
             self,
             "Select MRE SDK Root",
             self.mre_sdk_root.text().strip() or str(self.engine_root),

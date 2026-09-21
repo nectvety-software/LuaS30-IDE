@@ -5,12 +5,12 @@ from pathlib import Path
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QLabel, QMenu, QTabBar, QTabWidget, QToolButton, QWidget,
+    QDialog, QLabel, QMenu, QTabBar, QTabWidget, QToolButton, QWidget,
 )
 
 from app.ui import palette
 from app.ui.icons import apply_icon
-from app.vxpui.custom_dialog import CustomDialog, NoticeDialog
+from app.vxpui.custom_dialog import CustomDialog, FilePickerDialog, NoticeDialog
 from app.vxpui.icons import icon as chrome_icon
 
 from .code_editor import CodeEditor
@@ -381,7 +381,7 @@ class EditorTabs(QTabWidget):
         path = editor.path
         if force_dialog or path is None:
             initial = str(path.parent if path else Path.home())
-            filename, _ = QFileDialog.getSaveFileName(
+            filename = FilePickerDialog.get_save_file_name(
                 self, "Save source file", initial,
                 "Lua (*.lua);;Text (*.txt);;All Files (*)",
             )

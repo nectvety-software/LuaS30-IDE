@@ -212,12 +212,12 @@ class ProjectTree(QTreeView):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
     def _new_file(self, directory: Path) -> None:
-        name, ok = QInputDialog.getText(self, "New File", "File name:")
+        name, ok = TextInputDialog.get_text(self, "New File", "File name:")
         if not ok or not name.strip():
             return
         path = directory / name.strip()
         if path.exists():
-            QMessageBox.warning(self, "New File", "A file or folder with that name already exists.")
+            NoticeDialog("New File", "A file or folder with that name already exists.", self, warning=True).exec()
             return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -226,10 +226,10 @@ class ProjectTree(QTreeView):
             self.path_changed.emit(path)
             self.file_activated.emit(path)
         except OSError as exc:
-            QMessageBox.critical(self, "New File", str(exc))
+            NoticeDialog("New File", str(exc), self, error=True).exec()
 
     def _new_folder(self, directory: Path) -> None:
-        name, ok = QInputDialog.getText(self, "New Folder", "Folder name:")
+        name, ok = TextInputDialog.get_text(self, "New Folder", "Folder name:")
         if not ok or not name.strip():
             return
         path = directory / name.strip()
@@ -238,29 +238,29 @@ class ProjectTree(QTreeView):
             self.refresh()
             self.path_changed.emit(path)
         except OSError as exc:
-            QMessageBox.critical(self, "New Folder", str(exc))
+            NoticeDialog("New Folder", str(exc), self, error=True).exec()
 
     def _rename(self, path: Path) -> None:
-        name, ok = QInputDialog.getText(self, "Rename", "New name:", text=path.name)
+        name, ok = TextInputDialog.get_text(self, "Rename", "New name:", text=path.name)
         if not ok or not name.strip() or name.strip() == path.name:
             return
         dst = path.with_name(name.strip())
         if dst.exists():
-            QMessageBox.warning(self, "Rename", "A file or folder with that name already exists.")
+            NoticeDialog("Rename", "A file or folder with that name already exists.", self, warning=True).exec()
             return
         try:
             path.rename(dst)
             self.refresh()
             self.path_changed.emit(dst)
         except OSError as exc:
-            QMessageBox.critical(self, "Rename", str(exc))
+            NoticeDialog("Rename", str(exc), self, error=True).exec()
 
     def _delete(self, path: Path) -> None:
-        answer = QMessageBox.question(
-            self, "Delete", f"Delete {path.name}?\\n\\nThis cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        answer = ConfirmDialog.ask(
+            "Delete", f"Delete {path.name}?\n\nThis cannot be undone.",
+            self, confirm_text="Yes", danger=True,
         )
-        if answer != QMessageBox.StandardButton.Yes:
+        if not answer:
             return
         try:
             if path.is_dir():
@@ -270,4 +270,4 @@ class ProjectTree(QTreeView):
             self.refresh()
             self.path_changed.emit(path)
         except OSError as exc:
-            QMessageBox.critical(self, "Delete", str(exc))
+            NoticeDialog("Delete", str(exc), self, error=True).exec()

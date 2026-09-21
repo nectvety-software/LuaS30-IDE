@@ -8,11 +8,12 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QToolButton, QVBoxLayout, QWidget,
+    QPushButton, QToolButton, QVBoxLayout, QWidget,
 )
 
 from app.core.project_session import ProjectSession
 from app.ui.icons import apply_icon, glyph, icon_font
+from app.vxpui.custom_dialog import NoticeDialog
 
 
 @dataclass(frozen=True)
@@ -350,26 +351,28 @@ class MediaTekMREConfigDialog(QDialog):
         try:
             ProjectSession.validate_project_name(name)
         except ValueError as exc:
-            QMessageBox.warning(self, "APPNAME không hợp lệ", str(exc))
+            NoticeDialog("APPNAME không hợp lệ", str(exc), self, warning=True).exec()
             self.app_name.setFocus()
             return
 
         version = self.app_version.text().strip()
         if not version or not _VERSION_RE.fullmatch(version):
-            QMessageBox.warning(
-                self,
+            NoticeDialog(
                 "APPVER không hợp lệ",
                 "Phiên bản nên có dạng 1.0.0 hoặc 1.0.0-beta.",
-            )
+                self,
+                warning=True,
+            ).exec()
             self.app_version.setFocus()
             return
 
         if not self.vendor.text().strip():
-            QMessageBox.warning(
-                self,
+            NoticeDialog(
                 "VENDOR không hợp lệ",
                 "Nhà phát triển không được để trống.",
-            )
+                self,
+                warning=True,
+            ).exec()
             self.vendor.setFocus()
             return
 

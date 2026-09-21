@@ -10,12 +10,13 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl, qVersion
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QTabWidget, QTableWidget,
+    QAbstractItemView, QHBoxLayout, QLabel, QTabWidget, QTableWidget,
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from app.core.paths import app_data_root, projects_root, tool_python
 from app.ui import palette
+from app.vxpui.custom_dialog import CustomDialog
 
 # Nhà phát hành / bản quyền. MỘT nguồn duy nhất cho cả hộp thoại About lẫn tab
 # About, để không có hai chuỗi bản quyền lệch nhau trong cùng một màn hình.
@@ -91,16 +92,20 @@ def _read_engine_version(engine_root: Path) -> str:
         return "1.0.1"
 
 
-class AboutDialog(QDialog):
-    def __init__(self, engine_root: Path, parent=None, start_tab: str = "about") -> None:
-        super().__init__(parent)
-        self.engine_root = engine_root.resolve()
-        self.setWindowTitle("About LuaS30 IDE")
-        self.resize(720, 560)
-        self.setMinimumSize(620, 480)
-        self.setModal(True)
+class AboutDialog(CustomDialog):
+    """Frameless — custom Title Bar của engine, không dùng thanh tiêu đề Windows."""
 
-        root = QVBoxLayout(self)
+    def __init__(self, engine_root: Path, parent=None, start_tab: str = "about") -> None:
+        # 620px: chrome frameless (title bar + footer) chiếm ~100px, chiều cao
+        # cũ 560 khiến tài liệu tab About tràn 18px phải cuộn mới thấy bản quyền.
+        super().__init__("About LuaS30 IDE", parent=parent, width=720, height=620, resizable=True)
+        self.engine_root = engine_root.resolve()
+        self.setMinimumSize(620, 480)
+        # Body tự co theo viewport để tab luôn đủ cao; cuộn là việc của từng
+        # QTextBrowser bên trong (scroll ngoài cùng sẽ nhốt tab ở sizeHint).
+        self.body_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        root = self.body_layout
         root.setContentsMargins(20, 18, 20, 16)
         root.setSpacing(12)
 
@@ -133,10 +138,8 @@ class AboutDialog(QDialog):
         self.tabs.addTab(self._paths_tab(), "Paths")
         root.addWidget(self.tabs, 1)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        root.addWidget(buttons)
+        close = self.add_footer_button("Đóng", ghost=True, icon_name="fa5s.times")
+        close.clicked.connect(self.accept)
 
         mapping = {"about": 0, "environment": 1, "credits": 2, "paths": 3}
         self.tabs.setCurrentIndex(mapping.get(start_tab, 0))

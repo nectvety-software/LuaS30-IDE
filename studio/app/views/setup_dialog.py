@@ -9,10 +9,10 @@ không bao giờ chặn việc mở IDE. Mở lại bất cứ lúc nào từ To
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QPlainTextEdit,
-    QProgressBar, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QCheckBox, QFrame, QHBoxLayout, QLabel, QPlainTextEdit,
+    QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
 
 from app.services.environment_setup import (
@@ -20,6 +20,7 @@ from app.services.environment_setup import (
     is_first_run, mark_setup_done,
 )
 from app.ui.icons import apply_icon
+from app.vxpui.custom_dialog import CustomDialog
 
 
 class _RequirementRow(QFrame):
@@ -63,12 +64,17 @@ class _RequirementRow(QFrame):
         return self.check.isChecked() and self.check.isEnabled()
 
 
-class SetupDialog(QDialog):
+class SetupDialog(CustomDialog):
+    """Frameless — custom Title Bar của engine, không dùng thanh tiêu đề Windows."""
+
     setup_completed = Signal(bool)
 
     def __init__(self, engine_root: Path | str, version: str,
                  parent=None, *, force: bool = False) -> None:
-        super().__init__(parent)
+        super().__init__(
+            "Thiết lập LuaS30 IDE lần đầu", parent=parent,
+            width=640, height=560, resizable=True,
+        )
         self.engine_root = Path(engine_root).resolve()
         self.version = str(version)
         self._force = force
@@ -78,12 +84,9 @@ class SetupDialog(QDialog):
         self._installer.step_started.connect(self._on_step_started)
         self._installer.finished.connect(self._on_install_finished)
 
-        self.setWindowTitle("Thiết lập LuaS30 IDE lần đầu")
-        self.resize(640, 560)
         self.setMinimumSize(560, 460)
-        self.setModal(True)
 
-        root = QVBoxLayout(self)
+        root = self.body_layout
         root.setContentsMargins(20, 16, 20, 16)
         root.setSpacing(10)
 
@@ -109,16 +112,13 @@ class SetupDialog(QDialog):
         self.progress.setFixedHeight(6)
         root.addWidget(self.progress)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        # Vùng danh sách thả trực tiếp vào body — CustomDialog đã có cuộn riêng.
         self.list_widget = QWidget()
         self.list_layout = QVBoxLayout(self.list_widget)
         self.list_layout.setContentsMargins(0, 6, 0, 6)
         self.list_layout.setSpacing(6)
         self.list_layout.addStretch(1)
-        scroll.setWidget(self.list_widget)
-        root.addWidget(scroll, 1)
+        root.addWidget(self.list_widget, 1)
 
         self.log_label = QLabel("Nhật ký")
         self.log_label.setObjectName("Muted")
@@ -132,8 +132,7 @@ class SetupDialog(QDialog):
         self.log_label.hide()
         self.log_view.hide()
 
-        footer = QHBoxLayout()
-        footer.addStretch(1)
+        footer = self.footer_layout
         self.skip_button = QPushButton("Bỏ qua")
         apply_icon(self.skip_button, "close", 13)
         self.skip_button.clicked.connect(self._skip)
@@ -150,7 +149,6 @@ class SetupDialog(QDialog):
         self.done_button.hide()
         for btn in (self.skip_button, self.rescan_button, self.install_button, self.done_button):
             footer.addWidget(btn)
-        root.addLayout(footer)
 
         # Quét ngay khi hộp thoại đã hiện.
         QTimer.singleShot(0, self._scan)
