@@ -2272,6 +2272,30 @@ class VxpMainWindow(QWidget):
             designer.sync_project_assets()
             designer.reload_current_screen()
 
+    def _open_ai_touched_tabs(self, change_set: PreparedChangeSet) -> None:
+        """Giống VS Code: tệp AI vừa sửa/tạo được mở thành tab trong editor.
+
+        Tệp đã mở thì chỉ nạp lại nội dung (giữ tab, khỏi mở trùng); tệp mới
+        thì mở tab. Tab được chọn cuối cùng là tệp đầu tiên trong change set.
+        """
+        self._enter_editor()
+        first_index = None
+        for change in change_set.changes:
+            target = change.absolute_path
+            if not Path(target).is_file():
+                continue
+            editor = self.tabs.open_file(target)
+            if editor is None:
+                continue
+            editor.setPlainText(change.after)
+            editor.document().setModified(False)
+            if first_index is None:
+                found = self.tabs.find_editor(Path(target).resolve())
+                if found:
+                    first_index = found[0]
+        if first_index is not None:
+            self.tabs.setCurrentIndex(first_index)
+
     def _apply_ai_changes(self) -> None:
         change_set = self._ai_change_set
         if not change_set:
