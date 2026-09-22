@@ -29,7 +29,7 @@ for token in ("/responses","/v1/messages",":generateContent","/chat/completions"
     if token not in providers: errors.append("provider route missing: "+token)
 for token in ("SKILLS.md","SKILL.md","PROMPT.md","IGNORED_NAMES","project_tree"):
     if token not in context: errors.append("context contract missing: "+token)
-if 'VERSION = "1.0.1"' not in main: errors.append("wrong version")
+if 'VERSION = "1.0.2"' not in main: errors.append("wrong version")
 if 'act("Chat AI", "fa5s.robot", "Ctrl+Alt+I")' not in main: errors.append("ChatAI action missing")
 if "self.ai_chat.changes_proposed.connect(self._prepare_ai_changes)" not in main:
     errors.append("AI change proposal not wired")

@@ -36,7 +36,7 @@ for token in (
     'dialog = MediaTekMREConfigDialog(self)',
     'metadata=config.project_metadata()',
     'sdk_metadata=config.sdk_metadata()',
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
 ):
     if token not in main:
         errors.append('MainWindow wizard integration missing: ' + token)
@@ -89,6 +89,73 @@ for path in (
     except SyntaxError as exc:
         errors.append(f'syntax error {path.name}: {exc}')
 
+# --- Template du an: 3 cho phai khop (dialog <-> session <-> templates/) ---
+# Them mot template ma quen mot trong ba cho thi combo hien muc chon sai hoac
+# create_project() nem "Unknown project template" / "template not found".
+
+def _module_literal(source: str, name: str):
+    """Doc mot literal cap module bang ast (khong import studio/)."""
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == name:
+                    return ast.literal_eval(node.value)
+    return None
+
+
+options = _module_literal(dialog, 'PROJECT_TEMPLATE_OPTIONS')
+mapping = _module_literal(session, 'PROJECT_TEMPLATES')
+
+if not options:
+    errors.append('PROJECT_TEMPLATE_OPTIONS not found/parsable in mediatek_mre_dialog.py')
+if not mapping:
+    errors.append('PROJECT_TEMPLATES not found/parsable in project_session.py')
+
+if options and mapping:
+    for entry in options:
+        if not (isinstance(entry, tuple) and len(entry) == 3 and all(isinstance(x, str) for x in entry)):
+            errors.append(f'PROJECT_TEMPLATE_OPTIONS entry is not (id, label, desc): {entry!r}')
+            continue
+        tid, label, desc = entry
+        if tid not in mapping:
+            errors.append(f'template {tid!r} offered in dialog but missing from PROJECT_TEMPLATES')
+        if not label.strip() or not desc.strip():
+            errors.append(f'template {tid!r} has an empty label/description')
+    for tid in mapping:
+        if tid not in {e[0] for e in options if isinstance(e, tuple) and len(e) == 3}:
+            errors.append(f'template {tid!r} in PROJECT_TEMPLATES is not offered by the dialog')
+
+    seen_appids = {}
+    for tid, dirname in sorted(mapping.items()):
+        tdir = ROOT / 'templates' / dirname
+        if not tdir.is_dir():
+            errors.append(f'template dir missing: templates/{dirname}')
+            continue
+        for required in ('project.json', 'conf.lua', 'main.lua'):
+            if not (tdir / required).is_file():
+                errors.append(f'templates/{dirname} missing {required}')
+        descriptor = tdir / 'project.json'
+        if descriptor.is_file():
+            try:
+                payload = json.loads(descriptor.read_text(encoding='utf-8'))
+            except ValueError as exc:
+                errors.append(f'templates/{dirname}/project.json is not valid JSON: {exc}')
+                continue
+            appid = payload.get('appid')
+            if appid is None:
+                errors.append(f'templates/{dirname}/project.json has no appid')
+            elif appid in seen_appids:
+                errors.append(
+                    f'duplicate template appid {appid}: {seen_appids[appid]} and {dirname}')
+            else:
+                seen_appids[appid] = dirname
+
+    if 'keypad-demo' in mapping:
+        for rel in ('templates/keypad-demo/main.lua',
+                    'templates/keypad-demo/src/keypad.lua'):
+            if not (ROOT / rel).is_file():
+                errors.append(f'keypad template missing {rel}')
+
 if errors:
     print('FAIL')
     for item in errors:
@@ -102,3 +169,5 @@ print('PASS: unique AppID is preserved while wizard metadata is merged')
 print('PASS: .luas30/mre_sdk.json project configuration is generated')
 print('PASS: project compat_profile is honored when build setting is auto')
 print('PASS: custom frameless-style wizard theme is installed')
+print('PASS: dialog options / PROJECT_TEMPLATES / templates/ dirs agree')
+print('PASS: every template ships project.json + conf.lua + main.lua with a unique appid')

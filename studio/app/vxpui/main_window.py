@@ -83,7 +83,7 @@ _PERSISTENT_TOOL_TABS = ("settings", "projects", "project-doctor", "compat-matri
 
 class VxpMainWindow(QWidget):
     # Keep in lockstep with the repo-root VERSION file (version-sync guards).
-    VERSION = "1.0.1"
+    VERSION = "1.0.2"
     LEFT_COLUMN_MIN_WIDTH = 190
 
     def __init__(self, engine_root: Path, version: str = "") -> None:
@@ -788,6 +788,9 @@ class VxpMainWindow(QWidget):
         self.ai_chat.review_changes_requested.connect(self._review_ai_changes)
         self.ai_chat.apply_changes_requested.connect(self._apply_ai_changes)
         self.ai_chat.reject_changes_requested.connect(self._reject_ai_changes)
+        # Goal Mode: khôi phục tệp nằm ở đây vì main_window giữ AIChangeService và
+        # biết cách nạp lại editor + làm mới PROBLEMS sau khi tệp đổi trên đĩa.
+        self.ai_chat.goal_rollback_requested.connect(self._rollback_ai_checkpoint)
         for pane in (split, left_column, center_column):
             pane.splitterMoved.connect(lambda *_: self._schedule_workspace_save())
         self._update_activity_bar()
@@ -2349,6 +2352,77 @@ class VxpMainWindow(QWidget):
             view.mark_rejected()
         self.ai_chat.on_code_changes_rejected()
         self.show_status("AI code changes rejected")
+
+    def _rollback_ai_checkpoint(self, payload: object = None) -> None:
+        """Goal Mode: khôi phục tệp về một bản chụp do AI tạo.
+
+        `payload` là dict {"stamp", "mode"} do AIChatView phát ra:
+          * mode "undo"   — hoàn tác các ghi CỦA bản chụp (stamp rỗng = mới nhất);
+          * mode "rewind" — hoàn tác mọi ghi SAU bản chụp (về đúng trạng thái TẠI nó).
+
+        Chỉ chạm vào tệp CHÍNH AI đã ghi. Tệp người dùng sửa tay sau đó được giữ
+        nguyên và báo lại (xem `AIChangeService.restore_checkpoint`). Không bao
+        giờ raise: mọi lỗi được trả về AIChatView để hiện thẳng trong transcript,
+        vì đây là thao tác chạy nền theo mục tiêu chứ không phải người dùng bấm
+        nút rồi ngồi chờ một hộp thoại.
+        """
+        data = payload if isinstance(payload, dict) else {"stamp": str(payload or "")}
+        stamp = str(data.get("stamp") or "")
+        mode = "rewind" if data.get("mode") == "rewind" else "undo"
+
+        root = self.session.root
+        if not root:
+            self.ai_chat.on_rollback_finished({"error": "Chưa mở dự án nào."})
+            return
+        try:
+            if mode == "rewind":
+                report = AIChangeService.rewind_to(root, stamp)
+            elif stamp:
+                report = AIChangeService.restore_checkpoint(root, stamp)
+            else:
+                report = AIChangeService.restore_latest(root)
+        except Exception as exc:
+            self.ai_chat.on_rollback_finished({"error": str(exc)})
+            self.show_status(f"AI rollback failed: {exc}")
+            return
+
+        # Nạp lại mọi editor đang mở trên các tệp vừa bị đổi: nếu để nguyên, người
+        # dùng sẽ nhìn thấy bản đã sửa và lần lưu kế tiếp ghi đè ngược bản khôi phục.
+        touched = [Path(root) / str(rel) for rel in (report.get("restored") or [])]
+        for target in touched:
+            resolved = target.resolve()
+            for group in self.tabs.groups:
+                found = group.find_editor(resolved)
+                if not found:
+                    continue
+                _index, editor = found
+                try:
+                    editor.setPlainText(resolved.read_text(encoding="utf-8-sig"))
+                except OSError:
+                    continue
+                editor.document().setModified(False)
+                self.tabs.set_ai_file_status(resolved, "modified")
+
+        # Tệp AI tạo có thể vừa bị xoá -> cây thư mục và chỉ mục phải dựng lại.
+        self.index.set_root(root)
+        self.explorer.tree.refresh()
+
+        restored = len(report.get("restored") or [])
+        removed = len(report.get("removed") or [])
+        kept = len(report.get("skipped") or [])
+        self.bottom.console.append(
+            f"[AI] Rollback {report.get('stamp')}: {restored} restored · "
+            f"{removed} removed · {kept} kept"
+        )
+        self.show_status(
+            f"AI rollback {report.get('stamp')}: {restored} khôi phục · "
+            f"{removed} xoá · {kept} giữ nguyên"
+        )
+        self._ai_change_set = None
+        self._ai_last_applied_backup = None
+        # Tệp đổi ngoài editor: để IDE phân tích lại rồi báo lại cho agent.
+        QTimer.singleShot(400, self.ai_chat.report_errors_after_change)
+        self.ai_chat.on_rollback_finished(report)
 
     def _accept_ai_change_file(self) -> None:
         """Accept file dang chon kieu Codex: ghi ngay + tiep tuc duyet file khac."""

@@ -87,9 +87,9 @@ def collect_environment(engine_root: Path) -> list[tuple[str, str]]:
 def _read_engine_version(engine_root: Path) -> str:
     p = engine_root / "VERSION"
     try:
-        return p.read_text(encoding="utf-8").strip() or "1.0.1"
+        return p.read_text(encoding="utf-8").strip() or "1.0.2"
     except OSError:
-        return "1.0.1"
+        return "1.0.2"
 
 
 class AboutDialog(CustomDialog):

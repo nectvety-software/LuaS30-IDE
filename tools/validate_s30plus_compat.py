@@ -58,8 +58,8 @@ if "LUAS30_DEVICE_IMSI" not in service:
     errors.append("BuildService does not pass IMSI by environment")
 if '"device_imsi"' in main or "'device_imsi'" in main:
     errors.append("MainWindow persists raw device IMSI field")
-if 'VERSION = "1.0.1"' not in main:
-    errors.append("MainWindow version is not 1.0.1")
+if 'VERSION = "1.0.2"' not in main:
+    errors.append("MainWindow version is not 1.0.2")
 
 profile_path=ROOT/"compat/devices/nokia-225-dual-sim-rm1011.json"
 if not profile_path.is_file():

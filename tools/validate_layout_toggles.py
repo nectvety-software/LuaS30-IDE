@@ -4,7 +4,7 @@ errors=[]
 main=(ROOT/'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
 studio=(ROOT/'studio/app/vxpui/assets_studio_window.py').read_text(encoding='utf-8')
 for token in (
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
     'self.explorer_toggle_button',
     'def _toggle_left_column',
     'self.project_panel_frame.setVisible(visible)',

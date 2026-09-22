@@ -1136,6 +1136,66 @@ QPushButton#AIShellRun:hover {
     background: @CHAT_ACCENT_HOVER;
 }
 
+/* Goal Mode — dải tiến độ mục tiêu tự chủ */
+QFrame#AIGoalCard {
+    background: @CHAT_SURFACE;
+    border-top: 1px solid @CHAT_BORDER;
+    border-bottom: 1px solid @CHAT_BORDER;
+}
+QLabel#AIGoalTag {
+    color: @CHAT_ACCENT;
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+QLabel#AIGoalTitle {
+    color: @CHAT_TEXT;
+    font-weight: 600;
+    font-size: 11px;
+}
+QLabel#AIGoalBadge {
+    color: @CHAT_TEXT_3;
+    font-size: 10px;
+}
+QLabel#AIGoalSteps {
+    color: @CHAT_TEXT_2;
+    font-size: 10px;
+}
+QLabel#AIGoalStatus {
+    color: @CHAT_TEXT_4;
+    font-size: 10px;
+}
+QProgressBar#AIGoalProgress {
+    background: @CHAT_HOVER;
+    border: 0;
+    border-radius: 6px;
+}
+QProgressBar#AIGoalProgress::chunk {
+    background: @CHAT_ACCENT;
+    border-radius: 6px;
+}
+QPushButton#AIGoalAbort,
+QPushButton#AIGoalRollback {
+    min-height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: @CHAT_HOVER;
+    border: 1px solid @CHAT_BORDER;
+}
+QPushButton#AIGoalRollback {
+    background: @CHAT_ACCENT;
+    border-color: @CHAT_ACCENT_HOVER;
+    color: @CHAT_ON_ACCENT;
+}
+QPushButton#AIGoalRollback:hover { background: @CHAT_ACCENT_HOVER; }
+QPushButton#AIGoalAbort:hover { background: @AMBER_DEEP; }
+QPushButton#AIGoalAbort:disabled,
+QPushButton#AIGoalRollback:disabled {
+    color: @CHAT_TEXT_4;
+    background: @CHAT_HOVER;
+    border-color: @CHAT_BORDER_WEAK;
+}
+
 /* AI provider dialog */
 QDialog#AIProviderDialog { background: transparent; }
 QFrame#AIProviderCard {

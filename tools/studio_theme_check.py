@@ -576,11 +576,102 @@ def render(out_dir: Path | None) -> None:
 
     check_ai_tab_badges(app, out_dir)
     check_tab_close(app, out_dir)
+    check_goal_strip(app, out_dir)
 
     if shots:
         print("  saved " + ", ".join(str(p) for p in shots), flush=True)
 
     QTimer.singleShot(0, app.quit)
+
+
+def check_goal_strip(app, out_dir: Path | None) -> None:
+    """Dải tiến độ Goal Mode: đủ nội dung, không cắt chữ, không rò theme sáng.
+
+    Dựng THẬT `AIChatView` rồi đẩy trạng thái mục tiêu vào, KHÔNG đi qua
+    `/goal ...` — đường đó sẽ khởi động một lượt agent thật (gọi provider của
+    người dùng). Bài kiểm này chỉ soi phần render.
+    """
+    from app.services.ai_goal_service import GoalService
+    from app.views.ai_chat_view import AIChatView
+
+    print("\n-- E. dải tiến độ Goal Mode --", flush=True)
+
+    sandbox = Path(tempfile.mkdtemp(prefix="luas30_goal_strip_"))
+    (sandbox / "src").mkdir(parents=True, exist_ok=True)
+    (sandbox / "main.lua").write_text("return {}\n", encoding="utf-8")
+
+    view = AIChatView(ROOT)
+    view.set_project_root(sandbox)
+    check("chưa có mục tiêu thì dải phải ẩn", view.goal_card.isHidden())
+
+    goal_service = GoalService(sandbox)
+    view.goal_service = goal_service
+    goal_service.start("Sửa lỗi bàn phím trong template keypad-demo")
+    goal_service.set_steps([
+        "Đọc hợp đồng phím trong doc/ai/Keypad.md",
+        "Sửa guard fresh trong src/keypad.lua",
+        "Chạy luac -p trên mọi tệp đã đổi",
+        "Chạy smoke test kiểm chứng",
+    ])
+    goal_service.start_step(1)
+    goal_service.complete_step(1, "doc/ai/Keypad.md đã đọc", checkpoint="20260921-120000-000001")
+    goal_service.start_step(2)
+    view._sync_goal_strip()
+    app.processEvents()
+
+    check("có mục tiêu thì dải phải hiện", not view.goal_card.isHidden())
+    check("tiêu đề mục tiêu hiện trong dải", bool(view.goal_title.text()))
+    check("kế hoạch hiện trong dải", "keypad.lua" in view.goal_steps.text())
+    check("huy hiệu tiến độ hiện số bước", "1/4" in view.goal_badge.text(),
+          view.goal_badge.text())
+    check("thanh tiến độ = 25%", view.goal_progress.value() == 25,
+          str(view.goal_progress.value()))
+    check("dòng trạng thái nêu bước đang làm", "2" in view.goal_status.text(),
+          view.goal_status.text())
+
+    view.goal_card.resize(max(315, view.width()), view.goal_card.sizeHint().height())
+    view.show()
+    view.ensurePolished()
+    app.processEvents()
+
+    shot = view.goal_card.grab()
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / "ai_goal_strip.png"
+        shot.save(str(path))
+        print(f"  saved {path}", flush=True)
+
+    hits = light_blocks(shot, ignore=())
+    check("dải mục tiêu: không có khối sáng (không rò theme sáng)", not hits,
+          f"hits={hits[:6]}")
+
+    card = view.goal_card
+    for name, widget in (
+        ("tiêu đề", view.goal_title),
+        ("kế hoạch", view.goal_steps),
+        ("thanh tiến độ", view.goal_progress),
+        ("dòng trạng thái", view.goal_status),
+    ):
+        g = widget.geometry()
+        check(f"{name} nằm trong dải",
+              g.right() <= card.width() and g.bottom() <= card.height(),
+              f"g={g.right()}x{g.bottom()} vs {card.width()}x{card.height()}")
+
+    for button in (view.goal_abort_button, view.goal_rollback_button):
+        check(f"nút '{button.text()}' không bị cắt chữ",
+              button.width() >= button.sizeHint().width(),
+              f"w={button.width()} hint={button.sizeHint().width()}")
+
+    # Mục tiêu kết thúc: nút Dừng khoá lại, dải vẫn còn để người dùng quay lui.
+    goal_service.finish()
+    view._sync_goal_strip()
+    app.processEvents()
+    check("mục tiêu xong thì nút Dừng bị khoá", not view.goal_abort_button.isEnabled())
+    check("mục tiêu xong vẫn giữ nút Quay lui", view.goal_rollback_button.isEnabled())
+    check("dải báo đã hoàn thành", "hoàn thành" in view.goal_status.text().lower(),
+          view.goal_status.text())
+
+    view.close()
 
 
 # ---------------------------------------------------------------- main

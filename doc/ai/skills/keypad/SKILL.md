@@ -51,8 +51,18 @@ function engine.keypressed(k) keys[tostring(k):lower()] = true end
 function engine.keyreleased(k) keys[tostring(k):lower()] = false end
 ```
 
+## Mẫu có sẵn trong repo
+
+Template dự án **Keypad Demo** (`templates/keypad-demo`, chọn được trong
+`Cấu hình MediaTek MRE SDK`) hiện thực đủ tài liệu này: `src/keypad.lua`
+(bảng trạng thái + cờ `fresh` + alias số + `drawPad`), `main.lua` (menu
+wrap-around, kiểm tra phím, nhập số). Chép `src/keypad.lua` sang project khác
+là xong phần keypad.
+
 ## Kiểm chứng
 
 - Không còn chuỗi `"KEY_*"` hay tên phím HOA trong Lua.
 - Test stub: gọi `engine.keypressed("down")`, assert `menu_index` đổi.
 - Chạy được trên emulator với bàn phím `VXPEmu` / `PhoneKeypad`.
+- Không cần máy thật: `py -3.12 tools/validate_project_templates_e2e.py`
+  (tạo dự án thật từ template rồi chạy `tools/keypad_template_check.lua`).

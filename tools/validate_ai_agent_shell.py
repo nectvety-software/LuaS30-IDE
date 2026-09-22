@@ -57,8 +57,8 @@ for token in (
     if token not in editor:
         errors.append('Editor shell wiring missing: ' + token)
 
-if 'VERSION = "1.0.1"' not in main:
-    errors.append('MainWindow version is not 1.0.1')
+if 'VERSION = "1.0.2"' not in main:
+    errors.append('MainWindow version is not 1.0.2')
 if 'private raw chain-of-thought' not in skill:
     errors.append('SKILL.md does not prohibit raw chain-of-thought display')
 if 'Do not provide hidden or' not in prompt and 'private raw' not in prompt:

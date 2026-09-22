@@ -68,7 +68,7 @@ This wiki is only the entry point. The authoritative material lives in `doc/`:
 
 ## Version
 
-The current version is read from [`VERSION`](../../VERSION): **1.0.1**.
+The current version is read from [`VERSION`](../../VERSION): **1.0.2**.
 
 Release history: [`doc/release/changelog/`](../../doc/release/changelog/).
 

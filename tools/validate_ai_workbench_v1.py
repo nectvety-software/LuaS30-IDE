@@ -74,8 +74,8 @@ for token in (
     if token not in editor:
         errors.append('CodeEditorView AI change wiring missing: '+token)
 
-if 'VERSION = "1.0.1"' not in main:
-    errors.append('MainWindow version is not 1.0.1')
+if 'VERSION = "1.0.2"' not in main:
+    errors.append('MainWindow version is not 1.0.2')
 
 if errors:
     print('FAIL')

@@ -5,7 +5,7 @@ main = (ROOT / "studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 errors = []
 
 for token in (
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
     'entry.get("type") == "tool"',
     '"restore_source_tabs": False',
     "_PERSISTENT_TOOL_TABS",

@@ -18,7 +18,7 @@ for token in (
         errors.append("Settings missing startup option: "+token)
 
 for token in (
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
     'self._startup_mode = "welcome"',
     'mode not in {"welcome", "project_hub", "empty_editor"}',
     "def _activate_startup_mode",

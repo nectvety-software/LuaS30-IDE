@@ -50,7 +50,7 @@ for token in (
     "self.bottom.show_hex(vxp)",
     "self.bottom.hex_view.set_file(vxp)",
     "HEX loaded",
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
 ):
     if token not in main:
         errors.append("MainWindow HEX integration missing: "+token)

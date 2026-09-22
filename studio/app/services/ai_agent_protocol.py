@@ -233,8 +233,15 @@ DESIGN_TOOL_NAMES = ("ui_design", "asset")
 # dữ liệu thuộc main_window, không thuộc service nào cả.
 # "run_app": build project + chạy thử game/app trên VXPEmu screen-only + chụp
 # ảnh khói; handler bất đồng bộ cũng nằm ở AIChatView (kết quả về qua callback).
-WORKBENCH_TOOL_NAMES = ("skill", "problems", "run_app")
+# "goal": cập nhật kế hoạch/trạng thái của Goal Mode (`.luas30/ai_goal.json`).
+# Phải nằm trong TOOL_NAMES kể cả khi chưa bật Goal Mode: parser lọc theo danh
+# sách này, thêm tool mà quên ở đây thì khối tool bị bỏ IM LẶNG (0 action, không
+# lỗi) — đúng lỗi đã từng dính với các tool trước.
+WORKBENCH_TOOL_NAMES = ("skill", "problems", "run_app", "goal")
 TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + WORKBENCH_TOOL_NAMES
+
+# Ops hợp lệ của tool `goal` — nguồn duy nhất, dùng cho cả handler lẫn prompt.
+GOAL_OPS = ("status", "plan", "start", "done", "fail", "blocked", "finish")
 
 # Agent KHÔNG còn quyền đọc mã nguồn của chính LuaS30 IDE (đã bỏ scope="engine").
 # Model cũ vẫn có thể phát `{"tool":"engine","args":{"op":...}}`; lời gọi đó được
@@ -773,6 +780,7 @@ def agent_protocol_prompt(
     edit_enabled: bool = True,
     plan_mode: bool = False,
     full_access: bool = False,
+    goal_mode: bool = False,
 ) -> str:
     if plan_mode:
         shell = "Plan mode is active. Do not emit luas30-shell blocks."
@@ -856,6 +864,29 @@ def agent_protocol_prompt(
         'op "stop" halts the running emulator. Do not claim the app runs or looks '
         "correct until a run/test result (with its screenshot path) is returned."
     )
+    goal_note = (
+        "GOAL MODE is active: the user gave an objective instead of a one-line "
+        "request, and you are expected to close the loop yourself — plan, split the "
+        "objective into subtasks, edit the project source, run debug commands, test "
+        "the result, and repeat until the objective is genuinely achieved (not just "
+        "described). A goal state file is maintained for you; keep it truthful.\n"
+        "Drive it with the goal tool, one block per update:\n"
+        "```luas30-tool\n"
+        '{"tool":"goal","args":{"op":"plan","steps":["Inspect the keypad template",'
+        '"Fix the fresh-key guard in src/keypad.lua","Run luac -p on every changed file",'
+        '"Verify the smoke test passes"]},"reason":"Split the objective into verifiable steps"}\n'
+        "```\n"
+        "ops: plan (args.steps, 1-12 short verifiable steps), start (args.step), "
+        "done (args.step + args.verify — the command or check that PROVED it), "
+        "fail (args.step + args.note), blocked (args.reason — you need the user), "
+        "finish (objective achieved), status (read the current state back).\n"
+        "Rules: call plan once, before your first edit. Mark a step done ONLY after "
+        "a real check passed — a verification you did not run is not a verification. "
+        "When a step fails and you cannot fix it in this turn, call fail, and call "
+        "blocked when you need a decision from the user. Do not call finish while any "
+        "step is still open or failed. Prefer several small verified steps over one "
+        "large unverified claim."
+    )
     readonly_tools = (
         "Read-only codebase tools are available and may be used in any access mode. "
         "You may emit SEVERAL luas30-tool blocks in one answer — they run sequentially "
@@ -867,7 +898,7 @@ def agent_protocol_prompt(
         '{"tool":"read","args":{"path":"main.lua","start_line":1,"end_line":220},"reason":"Inspect current implementation"}\n'
         "```\n"
         "Use project-relative paths and never request secrets or .env files.\n"
-        + project_scope_note + "\n" + skills_note
+        + project_scope_note + "\n" + skills_note + (("\n" + goal_note) if goal_mode else "")
     )
     design_tools = (
         "UI Design and Assets tools let you read this project's interface design and asset "
@@ -915,6 +946,14 @@ def agent_protocol_prompt(
             "\nFull Access automation is active: use the available read tools, code edits and shell actions autonomously, "
             "validate your work when useful, and stop only when the requested task is complete or you truly need user input."
             if full_access and not plan_mode
+            else ""
+        )
+        + (
+            "\nGoal Mode: keep working through the step list until every step is done and "
+            "verified, or until you call blocked/finish. Never end a turn with an open step "
+            "and no next action — either take the next action or call blocked with the "
+            "decision you need."
+            if goal_mode
             else ""
         )
     )

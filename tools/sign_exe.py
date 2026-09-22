@@ -10,7 +10,7 @@ co che cua Windows, khong co meo code nao tranh duoc.
 
 Cach dung:
     set LUAS30_SIGN_PASSWORD=mat-khau-pfx
-    py tools/sign_exe.py --pfx C:\\certs\\qeafivels.pfx --file dist\\LuaS30IDE-Setup-1.0.1.exe
+    py tools/sign_exe.py --pfx C:\\certs\\qeafivels.pfx --file dist\\LuaS30IDE-Setup-1.0.2.exe
 
     py tools/sign_exe.py --pfx C:\\certs\\qeafivels.pfx --password mat-khau ^
         --timestamp http://timestamp.digicert.com --file app.exe

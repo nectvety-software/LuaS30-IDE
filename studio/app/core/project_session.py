@@ -23,6 +23,7 @@ PROJECT_TEMPLATES = {
     "doodle-quest": "DoodleQuest",
     "ninja-runner": "NinjaRunner",
     "catbox-mre": "CatBoxMRE",
+    "keypad-demo": "keypad-demo",
 }
 
 @dataclass(slots=True)

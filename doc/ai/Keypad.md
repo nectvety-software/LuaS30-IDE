@@ -154,3 +154,22 @@ end
 - [ ] Di chuyển chấp nhận cả D-Pad lẫn phím số dự phòng.
 - [ ] Không có handler chuột/touch.
 - [ ] Chạy được trên emulator với bàn phím thật của `VXPEmu` / `PhoneKeypad`.
+
+## 5. Mẫu chạy được trong repo
+
+`templates/keypad-demo` là template dự án hiện thực đúng tài liệu này — chọn
+được ngay trong hộp thoại **Cấu hình MediaTek MRE SDK** lúc tạo dự án:
+
+- `src/keypad.lua` — hợp đồng phím: bảng trạng thái, `press/release` trả cờ
+  `fresh`, alias số `2/8/4/6/5`, `options()`/`back()`, `digit()`, `drawPad()`.
+- `main.lua` — ba màn: menu wrap-around, kiểm tra phím (vẽ bàn phím vật lý),
+  nhập số (`clear` xoá 1 ký tự, `#` xoá hết).
+
+Chép `src/keypad.lua` sang project khác là có ngay phần keypad đúng chuẩn.
+
+Kiểm chứng không cần máy thật (Lua 5.1, build từ `vendor/lua-5.1.5`):
+
+```bash
+py -3.12 tools/validate_project_templates_e2e.py   # tạo dự án thật từ template rồi chạy harness
+python tools/validate_keypad_skill.py              # tài liệu + code template khớp hợp đồng
+```

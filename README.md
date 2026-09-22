@@ -1,4 +1,4 @@
-# LuaS30 IDE 1.0.1 – AI Workbench v1
+# LuaS30 IDE 1.0.2 – AI Workbench v1
 
 **LuaS30 IDE** là IDE + Native SDK + build pipeline dành cho ứng dụng/game Lua
 chạy theo workflow VXP trên thiết bị S30+/MRE-style.

@@ -17,7 +17,7 @@ groups=(ROOT/"studio/app/editor/editor_group_manager.py").read_text(encoding="ut
 view=(ROOT/"studio/app/vxpui/home_page.py").read_text(encoding="utf-8")
 
 for token in (
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
     '"welcome"',
     'self._startup_mode = "welcome"',
     'show_start_page',

@@ -7,7 +7,7 @@ main=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 editor=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 
 for token in (
-    'VERSION = "1.0.1"',
+    'VERSION = "1.0.2"',
     'self.stack.setObjectName("MainStack")',
     "def _show_home",
     "def _enter_editor",

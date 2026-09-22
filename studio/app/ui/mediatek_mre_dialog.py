@@ -82,6 +82,7 @@ PROJECT_TEMPLATE_OPTIONS = (
     ("doodle-quest", "Doodle Quest", "Game mẫu có UI notebook, HUD, combo, 3 màn"),
     ("ninja-runner", "Ninja Runner", "Game runner/parkour mẫu 240x320"),
     ("catbox-mre", "CatBoxMRE", "Mẫu game nâng cao với nhiều hệ thống"),
+    ("keypad-demo", "Keypad Demo", "Hợp đồng phím S30+: menu, nhập số, bàn phím (doc/ai/Keypad.md)"),
 )
 
 

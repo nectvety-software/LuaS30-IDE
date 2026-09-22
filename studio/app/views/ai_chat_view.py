@@ -10,12 +10,13 @@ from PySide6.QtCore import QPoint, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu,
-    QPlainTextEdit, QPushButton, QStackedWidget, QTextBrowser,
+    QPlainTextEdit, QProgressBar, QPushButton, QStackedWidget, QTextBrowser,
     QToolButton, QVBoxLayout, QWidget, QWidgetAction,
 )
 
 from app.services.ai_agent_protocol import (
     DESIGN_TOOL_NAMES,
+    GOAL_OPS,
     CodeEditAction, ShellAction, ToolAction, agent_protocol_prompt, bounded_shell_output,
     classify_shell_command, parse_agent_response,
 )
@@ -27,6 +28,12 @@ from app.services.ai_session_service import AIChatSessionStore, ChatSession
 from app.services.ai_tool_service import AIReadOnlyToolService
 from app.services.ai_design_tool_service import AIDesignToolService
 from app.services.codebase_context_service import CodebaseContextService
+from app.services.ai_goal_service import (
+    DEFAULT_TURN_BUDGET,
+    MAX_TURN_BUDGET,
+    GoalError,
+    GoalService,
+)
 from app.ui import palette
 from app.ui.icons import apply_icon, font_icon
 from app.vxpui.custom_dialog import ConfirmDialog, TextInputDialog
@@ -215,6 +222,15 @@ class AIChatView(QWidget):
     review_changes_requested = Signal()
     apply_changes_requested = Signal()
     reject_changes_requested = Signal()
+    # Goal Mode: yêu cầu main_window quay lui. Payload là dict
+    # {"stamp": str, "mode": "undo"|"rewind"}:
+    #   * "undo"   — hoàn tác các ghi CỦA bản chụp (stamp rỗng = bản mới nhất);
+    #   * "rewind" — hoàn tác mọi ghi SAU bản chụp (về đúng trạng thái TẠI nó).
+    # Hai kiểu này khác nhau thật, xem AIChangeService.rewind_to().
+    # main_window giữ AIChangeService và biết cách nạp lại editor sau khi khôi phục.
+    goal_rollback_requested = Signal(object)
+    # Goal Mode: xin chạy một lệnh kiểm chứng (dùng chung đường shell của agent).
+    goal_state_changed = Signal(object)
 
     def __init__(self, engine_root: Path, parent=None) -> None:
         super().__init__(parent)
@@ -267,6 +283,14 @@ class AIChatView(QWidget):
         self._agent_turns = 0
         self._max_agent_turns = 8
         self._max_full_access_turns = 32
+        # Goal Mode: trần lượt cho một mục tiêu lấy từ chính goal (turn_budget),
+        # không phải từ access mode — mục tiêu lớn cần nhiều lượt hơn một câu hỏi.
+        self.goal_service = GoalService()
+        self._goal_turns_used = 0
+        self._goal_rollback_stamp = ""
+        self._goal_rollback_mode = "undo"
+        self._goal_rollback_pending = False
+        self._last_applied_checkpoint = ""
         self._session_api_key = ""
         self._session_id = ""
         self._session_title = "New session"
@@ -478,6 +502,77 @@ class AIChatView(QWidget):
         chat_layout.setContentsMargins(0, 0, 0, 0)
         chat_layout.setSpacing(0)
         chat_layout.addWidget(self.transcript, 1)
+
+        # --- Goal Mode: dải tiến độ mục tiêu ---------------------------------
+        # Đặt NGAY DƯỚI transcript và TRÊN dòng "đang suy nghĩ": mục tiêu là tiêu
+        # đề của cả phiên làm việc, còn dòng suy nghĩ chỉ là hoạt động nhất thời.
+        self.goal_card = QFrame()
+        self.goal_card.setObjectName("AIGoalCard")
+        goal_layout = QVBoxLayout(self.goal_card)
+        goal_layout.setContentsMargins(10, 8, 10, 8)
+        goal_layout.setSpacing(6)
+        goal_head = QHBoxLayout()
+        goal_head.setSpacing(6)
+        self.goal_icon = QLabel()
+        self.goal_icon.setObjectName("AIGoalIcon")
+        self.goal_icon.setPixmap(font_icon("location", 13, normal="palette.CHAT_ACCENT").pixmap(13, 13))
+        goal_head.addWidget(self.goal_icon)
+        goal_tag = QLabel("GOAL")
+        goal_tag.setObjectName("AIGoalTag")
+        goal_head.addWidget(goal_tag)
+        self.goal_title = QLabel("")
+        self.goal_title.setObjectName("AIGoalTitle")
+        self.goal_title.setWordWrap(True)
+        goal_head.addWidget(self.goal_title, 1)
+        self.goal_badge = QLabel("")
+        self.goal_badge.setObjectName("AIGoalBadge")
+        goal_head.addWidget(self.goal_badge)
+        goal_layout.addLayout(goal_head)
+
+        self.goal_steps = QLabel("")
+        self.goal_steps.setObjectName("AIGoalSteps")
+        self.goal_steps.setWordWrap(True)
+        self.goal_steps.setTextFormat(Qt.TextFormat.PlainText)
+        goal_layout.addWidget(self.goal_steps)
+
+        self.goal_progress = QProgressBar()
+        self.goal_progress.setObjectName("AIGoalProgress")
+        self.goal_progress.setRange(0, 100)
+        self.goal_progress.setValue(0)
+        self.goal_progress.setTextVisible(False)
+        self.goal_progress.setFixedHeight(6)
+        goal_layout.addWidget(self.goal_progress)
+
+        self.goal_status = QLabel("")
+        self.goal_status.setObjectName("AIGoalStatus")
+        self.goal_status.setWordWrap(True)
+        goal_layout.addWidget(self.goal_status)
+
+        goal_buttons = QHBoxLayout()
+        goal_buttons.setSpacing(6)
+        self.goal_abort_button = QPushButton("Dừng mục tiêu")
+        self.goal_abort_button.setObjectName("AIGoalAbort")
+        self.goal_abort_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.goal_abort_button.setToolTip("/goal abort — dừng mục tiêu, giữ nguyên mã đã sửa")
+        self.goal_abort_button.clicked.connect(
+            lambda: self._handle_goal_command("abort", from_ui=True)
+        )
+        goal_buttons.addWidget(self.goal_abort_button)
+        goal_buttons.addStretch(1)
+        self.goal_rollback_button = QPushButton("Quay lui")
+        self.goal_rollback_button.setObjectName("AIGoalRollback")
+        self.goal_rollback_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.goal_rollback_button.setToolTip(
+            "/goal rollback — khôi phục tệp về bản chụp gần nhất (tệp bạn tự sửa sẽ được giữ)"
+        )
+        apply_icon(self.goal_rollback_button, "undo", 13)
+        self.goal_rollback_button.clicked.connect(
+            lambda: self._handle_goal_command("rollback", from_ui=True)
+        )
+        goal_buttons.addWidget(self.goal_rollback_button)
+        goal_layout.addLayout(goal_buttons)
+        self.goal_card.hide()
+        chat_layout.addWidget(self.goal_card)
 
         # Dòng "đang suy nghĩ" có icon quay — hiệu ứng hoạt động của agent.
         self.thinking_frame = QFrame()
@@ -1120,6 +1215,8 @@ class AIChatView(QWidget):
         if self._session_id and old_key != new_key:
             self._persist_session()
         self.project_root = new_root
+        # Mỗi project có mục tiêu riêng: đổi project là nạp lại goal của project đó.
+        self._attach_goal()
         self.context_badge.setText(self.project_root.name if self.project_root else "No project")
         self.context_badge.setToolTip(
             (f"Context root: {self.project_root}\n" if self.project_root else "")
@@ -1263,6 +1360,496 @@ class AIChatView(QWidget):
             "success",
         )
 
+    # ==================================================================
+    # Goal Mode — Hệ thống Tác vụ tự chủ
+    # ==================================================================
+    #
+    # Khác một lượt hỏi/đáp: người dùng giao một MỤC TIÊU bằng ngôn ngữ tự nhiên
+    # (`/goal ...`), rồi agent tự lập kế hoạch → chia bước → sửa tệp nguồn → tự
+    # chạy lệnh debug → kiểm thử → xác nhận từng bước, cho tới khi xong.
+    #
+    # Ba mảnh phối hợp, KHÔNG chồng việc:
+    #   * `GoalService`  — trạng thái mục tiêu/bước, sống qua khởi động lại.
+    #   * `AIChatView`   — vòng lặp (dưới đây) + dải tiến độ.
+    #   * `AIChangeService` — bản chụp tệp và khôi phục thật.
+
+    # Quay lui TỰ ĐỘNG khi mục tiêu bị chặn giữa đường: đưa dự án về bản chụp của
+    # bước ĐÃ XÁC NHẬN gần nhất, thay vì để lại một nửa vừa sửa dở. Chỉ chạm vào
+    # tệp do CHÍNH AI ghi; tệp người dùng tự sửa tay thì AIChangeService giữ
+    # nguyên và báo lại — nên thao tác này không thể nuốt công sức của người dùng.
+    GOAL_AUTO_ROLLBACK = True
+
+    GOAL_USAGE = (
+        "GOAL MODE — điều khiển bằng ngôn ngữ tự nhiên:\n"
+        "/goal <mô tả mục tiêu>  bắt đầu mục tiêu: agent tự chia bước, sửa mã, chạy thử\n"
+        "/goal status            xem trạng thái + kế hoạch hiện tại\n"
+        "/goal plan              in lại kế hoạch\n"
+        "/goal resume            mở lại mục tiêu đang bị chặn để agent thử tiếp\n"
+        "/goal abort             dừng mục tiêu (GIỮ NGUYÊN mã đã sửa)\n"
+        "/goal finish            đóng mục tiêu là đã xong\n"
+        "/goal rollback [stamp]  quay lui về bản chụp (mặc định: gần nhất)\n"
+        "/goal help              hiện trợ giúp này\n\n"
+        "Vòng lặp khép kín: lập kế hoạch → chia bước → sửa tệp nguồn → tự chạy lệnh "
+        "debug → kiểm thử → xác nhận từng bước, cho tới khi mục tiêu hoàn chỉnh. "
+        "Mỗi bước chỉ được đánh dấu xong khi có BẰNG CHỨNG thật; hết ngân sách lượt "
+        "thì dừng và báo rõ. Mọi thay đổi đều có bản chụp trong .luas30/ai-backups "
+        "nên quay lui được bất cứ lúc nào.\n\n"
+        "Ví dụ: /goal sửa lỗi bàn phím trong template keypad-demo rồi chạy thử kiểm chứng"
+    )
+
+    def _attach_goal(self) -> None:
+        """Gắn GoalService vào project đang mở (mỗi project có mục tiêu riêng)."""
+        self.goal_service.attach(self.project_root)
+        self._goal_turns_used = 0
+        self._last_applied_checkpoint = ""
+        self._sync_goal_strip()
+
+    def _sync_goal_strip(self) -> None:
+        """Vẽ lại dải tiến độ từ trạng thái goal thật (không giữ bản sao riêng)."""
+        goal = self.goal_service.goal
+        if goal is None:
+            self.goal_card.hide()
+            return
+        self.goal_card.show()
+        self.goal_title.setText(goal.title)
+        self.goal_badge.setText(goal.progress_text)
+        self.goal_steps.setText(goal.plan_text() if goal.steps else "(chưa chia bước)")
+        total = goal.total_steps
+        self.goal_progress.setValue(int(goal.done_steps * 100 / total) if total else 0)
+        self.goal_progress.setToolTip(f"{goal.done_steps}/{total} bước đã xác nhận")
+
+        parts: list[str] = []
+        if goal.status == "blocked":
+            parts.append(f"Cần bạn quyết định: {goal.blocked_reason}")
+        elif goal.status == "done":
+            parts.append("Đã hoàn thành")
+        elif goal.status == "aborted":
+            parts.append("Đã dừng")
+        else:
+            current = goal.current_step()
+            parts.append(
+                f"Đang làm bước {current.index}: {current.title}"
+                if current else "Chưa chia bước"
+            )
+        if goal.failed_steps:
+            parts.append(f"{goal.failed_steps} bước hỏng")
+        parts.append(f"lượt {goal.turns_used}/{goal.turn_budget}")
+        self.goal_status.setText(" · ".join(parts))
+        self.goal_abort_button.setEnabled(goal.active)
+        # Quay lui luôn bật khi có mục tiêu: bản chụp do AIChangeService tạo có thể
+        # nhiều hơn danh sách goal biết, nên để lệnh tự báo "chưa có bản chụp nào"
+        # trung thực hơn là tự đoán rồi khoá nút.
+        self.goal_rollback_button.setEnabled(True)
+
+    def _goal_status_text(self) -> str:
+        goal = self.goal_service.goal
+        if not goal:
+            return "Chưa có mục tiêu nào. Bắt đầu bằng /goal <mô tả mục tiêu>."
+        current = goal.current_step()
+        lines = [
+            f"MỤC TIÊU: {goal.title}",
+            f"TRẠNG THÁI: {goal.status} · {goal.progress_text} · "
+            f"lượt {goal.turns_used}/{goal.turn_budget}",
+        ]
+        if current:
+            lines.append(f"ĐANG LÀM: bước {current.index} — {current.title}")
+        if goal.blocked_reason:
+            lines.append(f"BỊ CHẶN: {goal.blocked_reason}")
+        lines.append("KẾ HOẠCH:")
+        lines.append(goal.plan_text())
+        if goal.checkpoints:
+            lines.append(f"BẢN CHỤP: {', '.join(goal.checkpoints[-4:])}")
+        return "\n".join(lines)
+
+    def _goal_good_checkpoint(self) -> str:
+        """Bản chụp của bước ĐÃ XÁC NHẬN gần nhất — trạng thái tốt để quay về."""
+        goal = self.goal_service.goal
+        if not goal:
+            return ""
+        for step in reversed(goal.steps):
+            if step.status == "done" and step.checkpoint:
+                return step.checkpoint
+        return ""
+
+    def _resolve_step_index(self, args: dict) -> int:
+        """Lấy số bước từ args, chịu được model quên số (suy ra bước đang mở)."""
+        raw = None
+        for key in ("step", "index", "step_index", "n"):
+            if args.get(key) is not None:
+                raw = args.get(key)
+                break
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return value
+        goal = self.goal_service.goal
+        current = goal.current_step() if goal else None
+        if current is None:
+            raise GoalError("Thiếu args.step và không có bước nào đang mở.")
+        return current.index
+
+    # Model đôi khi gọi tên op theo cách diễn giải riêng. Chuẩn hoá thay vì từ
+    # chối: một op bị từ chối vì gõ khác tên sẽ làm mục tiêu đứng im mà không có
+    # lỗi nào rõ ràng.
+    _GOAL_OP_ALIASES = {
+        "step_done": "done", "complete": "done", "completed": "done", "step_complete": "done",
+        "step_failed": "fail", "failed": "fail", "error": "fail", "step_error": "fail",
+        "set_plan": "plan", "steps": "plan", "plan_steps": "plan", "replan": "plan",
+        "begin": "start", "begin_step": "start", "step_start": "start",
+        "end": "finish", "complete_goal": "finish", "goal_done": "finish", "close": "finish",
+        "wait": "blocked", "needs_input": "blocked", "block": "blocked",
+        "get": "status", "read": "status", "show": "status",
+    }
+
+    def _run_goal_tool(self, action: ToolAction, *, continue_after: bool = True) -> None:
+        """Xử lý tool `goal`: agent tự cập nhật kế hoạch/trạng thái mục tiêu."""
+        args = dict(action.args or {})
+        op = str(args.get("op") or "status").strip().lower()
+        op = self._GOAL_OP_ALIASES.get(op, op)
+        if op not in GOAL_OPS:
+            self.activity.add("Goal", f"op không hợp lệ: {op}", "warning")
+            op = "status"
+
+        stop_after = False
+        try:
+            if op == "plan":
+                goal = self.goal_service.set_steps(args.get("steps") or [])
+                result = (
+                    f"Đã ghi kế hoạch ({goal.total_steps} bước), mục tiêu chuyển sang "
+                    f"trạng thái {goal.status}.\n{goal.plan_text()}"
+                )
+            elif op == "start":
+                step = self.goal_service.start_step(self._resolve_step_index(args))
+                result = f"Bắt đầu bước {step.index}: {step.title}"
+            elif op == "done":
+                verify = str(args.get("verify") or args.get("evidence") or "").strip()
+                step = self.goal_service.complete_step(
+                    self._resolve_step_index(args),
+                    verify,
+                    checkpoint=self._last_applied_checkpoint,
+                )
+                result = f"Bước {step.index} đã xác nhận xong."
+                result += f" Bằng chứng: {verify}" if verify else (
+                    " CẢNH BÁO: không có bằng chứng kèm theo — hãy nêu lệnh/kiểm tra "
+                    "đã thật sự chạy."
+                )
+            elif op == "fail":
+                note = str(args.get("note") or args.get("reason") or action.reason or "").strip()
+                step = self.goal_service.fail_step(self._resolve_step_index(args), note)
+                result = f"Bước {step.index} đánh dấu hỏng." + (f" Lý do: {step.note}" if step.note else "")
+            elif op == "blocked":
+                reason = str(args.get("reason") or action.reason or "").strip()
+                goal = self.goal_service.block(reason)
+                result = f"Mục tiêu bị chặn: {goal.blocked_reason}"
+                stop_after = True
+            elif op == "finish":
+                goal = self.goal_service.finish()
+                result = f"Mục tiêu đã đóng ở trạng thái {goal.status} ({goal.progress_text})."
+                stop_after = True
+            else:
+                result = self._goal_status_text()
+        except GoalError as exc:
+            result = f"Goal error: {exc}"
+            self.activity.add("Goal", str(exc), "error")
+        else:
+            goal = self.goal_service.goal
+            tone = "success"
+            if op in {"blocked", "fail"}:
+                tone = "warning"
+            if goal and goal.status == "done":
+                tone = "success"
+            self.activity.add(f"Goal {op}", result.splitlines()[0][:160], tone)
+            self._sync_goal_strip()
+            self.goal_state_changed.emit(self.goal_service.summary())
+
+        if stop_after:
+            self._append_message("assistant", self._goal_status_text())
+            self._finish_goal_run(op)
+            return
+
+        self._history.append(
+            {
+                "role": "user",
+                "content": (
+                    "Goal tool result:\n" + result
+                    + "\n\nTiếp tục đúng bước đang mở. Chỉ gọi goal op=done khi đã có "
+                    "bằng chứng thật (lệnh đã chạy, problems sạch, hoặc run_app đã chụp ảnh)."
+                ),
+                "_internal": True,
+            }
+        )
+        self._persist_session()
+        if continue_after:
+            self.status.setText(f"Goal {op}; AI tiếp tục...")
+            # `_queue_continue` tự thay bằng câu nhắc của mục tiêu và tự dừng nếu
+            # mục tiêu đã kết thúc — không nhân bản logic đó ở đây.
+            self._queue_continue("Continue")
+
+    def _finish_goal_run(self, why: str) -> None:
+        """Đóng vòng lặp tự chủ.
+
+        `why` quyết định có quay lui hay không:
+          * "blocked"   — agent bí thật ⇒ quay lui về trạng thái tốt gần nhất.
+          * "exhausted" — hết ngân sách lượt, mã đang dở nhưng KHÔNG hỏng ⇒ giữ
+            nguyên, chỉ báo để người dùng quyết (tự ý xoá ở đây là phá công sức).
+          * "finish"    — xong ⇒ giữ nguyên.
+        """
+        goal = self.goal_service.goal
+        self._sync_goal_strip()
+        self._set_agent_active(False)
+        self._goal_turns_used = 0
+        if not goal:
+            return
+        if why == "blocked":
+            self._append_message(
+                "assistant",
+                f"⛔ Mục tiêu đang bị chặn: {goal.blocked_reason}\n"
+                "Trả lời để gỡ chặn rồi dùng /goal resume, hoặc /goal abort để dừng hẳn.",
+            )
+            if self.GOAL_AUTO_ROLLBACK:
+                stamp = self._goal_good_checkpoint()
+                if stamp:
+                    self._append_message(
+                        "assistant",
+                        f"↩ Tự động quay lui về bản chụp của bước đã xác nhận gần nhất ({stamp}) "
+                        "để dự án không bị bỏ dở giữa chừng.",
+                    )
+                    self._request_goal_rollback(stamp, mode="rewind", auto=True)
+                else:
+                    self.activity.add(
+                        "Goal",
+                        "Không có bản chụp nào từ bước đã xác nhận — không quay lui.",
+                        "warning",
+                    )
+        elif why == "exhausted":
+            self._append_message(
+                "assistant",
+                f"⏳ Hết ngân sách lượt cho mục tiêu ({goal.progress_text}). "
+                "Mã đã sửa được GIỮ NGUYÊN. Dùng /goal resume để agent làm tiếp, "
+                "/goal status để xem còn bước nào, hoặc /goal rollback để quay lui.",
+            )
+        elif why == "finish":
+            self._append_message("assistant", "✅ Mục tiêu đã hoàn thành: " + goal.title)
+
+    def _request_goal_rollback(
+        self, stamp: str = "", *, mode: str = "undo", auto: bool = False
+    ) -> None:
+        """Phát yêu cầu quay lui. `mode`:
+          * "undo"   — hoàn tác các ghi của bản chụp `stamp` (rỗng = mới nhất);
+          * "rewind" — hoàn tác mọi ghi SAU `stamp` (về đúng trạng thái TẠI nó).
+        """
+        if self._goal_rollback_pending:
+            return
+        self._goal_rollback_pending = True
+        self._goal_rollback_stamp = str(stamp or "")
+        self._goal_rollback_mode = "rewind" if mode == "rewind" else "undo"
+        if self._goal_rollback_mode == "rewind":
+            label = f"về trạng thái cuối bản chụp {stamp}"
+        else:
+            label = f"hoàn tác bản chụp {stamp or 'gần nhất'}"
+        if auto:
+            self.activity.add("Goal", f"Quay lui tự động: {label}", "warning")
+        else:
+            self._append_message("assistant", f"↩ Đang quay lui: {label}…")
+        self.goal_rollback_requested.emit(
+            {"stamp": self._goal_rollback_stamp, "mode": self._goal_rollback_mode}
+        )
+
+    def on_rollback_finished(self, report: dict) -> None:
+        """main_window gọi lại sau khi khôi phục xong (thành công hay không)."""
+        self._goal_rollback_pending = False
+        report = dict(report or {})
+        if report.get("error"):
+            message = f"↩ Quay lui thất bại: {report['error']}"
+            self._append_message("assistant", message)
+            self.activity.add("Goal", message, "error")
+            return
+        restored = list(report.get("restored") or [])
+        removed = list(report.get("removed") or [])
+        skipped = list(report.get("skipped") or [])
+        undone = list(report.get("undone") or [])
+        if report.get("mode") == "rewind":
+            head = (
+                f"↩ Đã quay về trạng thái cuối bản chụp {report.get('stamp') or '(không rõ)'}"
+                + (f" (hoàn tác {len(undone)} bản chụp sau đó)" if undone else " (không có gì sau đó)")
+            )
+        else:
+            head = f"↩ Đã hoàn tác bản chụp {report.get('stamp') or '(không rõ)'}"
+        lines = [head + ":"]
+        if restored:
+            lines.append(f"• khôi phục {len(restored)} tệp: " + ", ".join(restored[:6]))
+        if removed:
+            lines.append(f"• xoá {len(removed)} tệp do AI tạo: " + ", ".join(removed[:6]))
+        if skipped:
+            lines.append(
+                f"• GIỮ NGUYÊN {len(skipped)} tệp bạn đã sửa tay: "
+                + ", ".join(str(item.get("path") or "") for item in skipped[:6])
+            )
+        if not restored and not removed:
+            lines.append("• không có gì để khôi phục")
+        self._append_message("assistant", "\n".join(lines))
+        self.activity.add("Goal", f"Quay lui {report.get('stamp') or ''}", "warning")
+        # Đưa vào lịch sử để lượt sau agent biết tệp đã bị trả về bản cũ.
+        self._history.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Rollback completed to checkpoint {report.get('stamp') or ''}: "
+                    f"restored={restored}, removed={removed}, skipped={skipped}. "
+                    "Các tệp này giờ là bản CŨ; hãy đọc lại trước khi sửa tiếp."
+                ),
+                "_internal": True,
+            }
+        )
+        self._persist_session()
+        self._sync_goal_strip()
+
+    def _goal_budget_for_mode(self) -> int:
+        """Ngân sách lượt theo access mode — plan mode chỉ lập được kế hoạch."""
+        mode = self.current_access_mode()
+        if mode == "plan":
+            return 8
+        if mode == "full":
+            return MAX_TURN_BUDGET
+        return DEFAULT_TURN_BUDGET
+
+    def _goal_continue_question(self, fallback: str) -> str:
+        """Câu nhắc cho lượt kế tiếp; trả "" khi mục tiêu đã kết thúc/hết ngân sách."""
+        goal = self.goal_service.goal
+        if goal is None or not goal.active:
+            return fallback
+        if goal.exhausted:
+            self._append_message(
+                "assistant",
+                f"⏳ Mục tiêu đã dùng hết ngân sách {goal.turn_budget} lượt "
+                f"({goal.progress_text}). Dừng vòng lặp tự chủ. Dùng /goal resume để "
+                "cho thêm lượt, hoặc /goal status để xem còn lại gì.",
+            )
+            self.activity.add("Goal", f"Hết ngân sách {goal.turn_budget} lượt", "warning")
+            self.goal_service.goal.status = "blocked"
+            self.goal_service.goal.blocked_reason = f"hết ngân sách {goal.turn_budget} lượt"
+            self.goal_service.save()
+            self._finish_goal_run("exhausted")
+            return ""
+        return self.goal_service.turn_prompt()
+
+    def _handle_goal_command(self, tail: str, *, from_ui: bool = False) -> bool:
+        """`/goal ...` — bắt đầu / xem / dừng / quay lui một mục tiêu tự chủ."""
+        value = str(tail or "").strip()
+        word, _, rest = value.partition(" ")
+        word = word.lower()
+        rest = rest.strip()
+        if from_ui:
+            label = {"abort": "Dừng mục tiêu", "rollback": "Quay lui bản chụp gần nhất"}
+            self._append_message("user", "🎯 " + label.get(word, value or "/goal"))
+        elif value:
+            self._append_message("user", f"🎯 /goal {value}")
+
+        if word in {"", "help", "-h", "--help"}:
+            self._append_message("assistant", self.GOAL_USAGE)
+            return True
+
+        if word in {"status", "trangthai", "state"}:
+            self._append_message("assistant", self._goal_status_text())
+            return True
+
+        if word in {"plan", "kehoach"}:
+            goal = self.goal_service.goal
+            self._append_message(
+                "assistant",
+                goal.plan_text() if goal and goal.steps
+                else "Chưa có kế hoạch. Dùng /goal <mô tả mục tiêu> để bắt đầu.",
+            )
+            return True
+
+        if word in {"abort", "stop", "dung", "dừng"}:
+            goal = self.goal_service.goal
+            if not goal:
+                self._append_message("assistant", "Chưa có mục tiêu nào để dừng.")
+                return True
+            self.goal_service.abort()
+            self._sync_goal_strip()
+            self._set_agent_active(False)
+            self._append_message(
+                "assistant",
+                f"⏹ Đã dừng mục tiêu: {goal.title}\n"
+                "Mã đã sửa vẫn GIỮ NGUYÊN. Dùng /goal rollback để quay lui nếu muốn.",
+            )
+            self.activity.add("Goal", "Người dùng dừng mục tiêu", "warning")
+            return True
+
+        if word in {"finish", "done-goal", "hoanthanh"}:
+            try:
+                goal = self.goal_service.finish()
+            except GoalError as exc:
+                self._append_message("assistant", str(exc))
+                return True
+            self._sync_goal_strip()
+            self._append_message(
+                "assistant", f"✅ Đã đóng mục tiêu: {goal.title} ({goal.progress_text})"
+            )
+            return True
+
+        if word in {"resume", "tieptuc", "tiếp"}:
+            goal = self.goal_service.goal
+            if not goal:
+                self._append_message("assistant", "Chưa có mục tiêu nào để tiếp tục.")
+                return True
+            self.goal_service.resume()
+            self._sync_goal_strip()
+            self._append_message(
+                "assistant",
+                f"▶ Mở lại mục tiêu: {goal.title}\n{goal.plan_text()}\n"
+                "Agent sẽ thử tiếp từ bước đang mở.",
+            )
+            self._start_goal_loop(self.goal_service.turn_prompt())
+            return True
+
+        if word in {"rollback", "quaylui", "quay-lui", "revert"}:
+            # Có stamp ⇒ "về trạng thái TẠI bản chụp đó"; không có ⇒ "hoàn tác
+            # thay đổi AI gần nhất". Hai việc khác nhau nên đừng gộp làm một.
+            self._request_goal_rollback(rest, mode="rewind" if rest else "undo")
+            return True
+
+        # Không phải lệnh con ⇒ TOÀN BỘ phần còn lại là mục tiêu mới.
+        try:
+            goal = self.goal_service.start(value, turn_budget=self._goal_budget_for_mode())
+        except GoalError as exc:
+            self._append_message("assistant", f"GOAL: {exc}\n\n{self.GOAL_USAGE}")
+            return True
+        self._sync_goal_strip()
+        self._append_message(
+            "assistant",
+            f"🎯 Mục tiêu mới: {goal.title}\n"
+            f"Ngân sách {goal.turn_budget} lượt · chế độ "
+            f"{next((item[0] for item in ACCESS_MODES if item[1] == self._access_mode), 'Ask before changes')}.\n"
+            "Agent sẽ tự chia bước, sửa tệp, chạy lệnh kiểm chứng và chỉ báo xong khi "
+            "có bằng chứng. Dùng /goal status để theo dõi, /goal abort để dừng.",
+        )
+        self.activity.add("Goal", f"Mục tiêu: {goal.title}", "summary")
+        self.goal_state_changed.emit(self.goal_service.summary())
+        # Context cho lượt đầu lấy theo chính mục tiêu: bộ chấm điểm nguồn liên
+        # quan dùng token của câu hỏi, nên đưa mục tiêu vào đó mới chọn đúng tệp.
+        self._start_goal_loop(goal.title)
+        return True
+
+    def _start_goal_loop(self, context_question: str) -> None:
+        """Khởi động lượt agent đầu tiên của một mục tiêu."""
+        if self._agent_active or (self._worker and self._worker.isRunning()):
+            return
+        self._agent_turns = 0
+        self._cancel_requested = False
+        self._set_agent_active(True)
+        self._pending_shell = None
+        self._executing_shell = None
+        self._pending_edits = ()
+        self.shell_card.hide()
+        self.changes_card.hide()
+        self._last_question = context_question
+        self._start_request(context_question)
+
     def _handle_slash_command(self, question: str) -> bool:
         value = str(question or "").strip()
         if not value.startswith("/"):
@@ -1294,6 +1881,8 @@ class AIChatView(QWidget):
             self.request_run_app(tail or "User requested run/test from the composer.",
                                  continue_agent=False)
             return True
+        if command == "/goal":
+            return self._handle_goal_command(tail)
         if command == "/skills":
             skill_service = getattr(self.tool_service, "skill_service", None)
             skills = skill_service.discover(self.project_root) if skill_service else []
@@ -1318,6 +1907,8 @@ class AIChatView(QWidget):
                 "/new - start a new persistent session\n"
                 "/sessions - list/resume project sessions\n"
                 "/rename <name> - rename the current session\n"
+                "/goal <mục tiêu> - Goal Mode: agent tự chia bước, sửa mã, chạy thử tới khi xong\n"
+                "/goal status|plan|resume|abort|finish|rollback - điều khiển mục tiêu đang chạy\n"
                 "/run - build + smoke-test the open game/app on VXPEmu (headless + screenshot)\n"
                 "/skills - list available agent skills\n"
                 "/help - show these commands\n\n"
@@ -1608,6 +2199,7 @@ class AIChatView(QWidget):
 
     def _system_prompt(self, context: str) -> str:
         plan_mode = self.current_access_mode() == "plan"
+        goal_block = self.goal_service.prompt_block()
         return (
             "You are LuaS30 Studio AI Workbench, a codebase-aware engineering agent "
             "specialised in Lua 5.1 programming for Nokia S30+ MRE .vxp projects running "
@@ -1634,8 +2226,11 @@ class AIChatView(QWidget):
                 edit_enabled=self._edit_policy() != "disabled",
                 plan_mode=plan_mode,
                 full_access=self.current_access_mode() == "full",
+                goal_mode=bool(goal_block),
             )
             + "\n\n"
+            + goal_block
+            + ("\n\n" if goal_block else "")
             + context
         )
 
@@ -1792,12 +2387,21 @@ class AIChatView(QWidget):
             return
         if self._worker and self._worker.isRunning():
             return
-        turn_limit = (
-            self._max_full_access_turns
-            if self.current_access_mode() == "full"
-            else self._max_agent_turns
-        )
-        if self._agent_turns >= turn_limit:
+        # Goal Mode có ngân sách lượt riêng của MỤC TIÊU (mục tiêu nhiều bước cần
+        # nhiều lượt hơn một câu hỏi), nhưng vẫn luôn có biên — không bao giờ chạy
+        # vô hạn. Ngoài Goal Mode giữ nguyên trần cũ của agent/Full Access.
+        goal = self.goal_service.goal if self.goal_service.active else None
+        if goal is not None:
+            turn_limit = goal.turn_budget
+            turns_used = goal.turns_used
+        else:
+            turn_limit = (
+                self._max_full_access_turns
+                if self.current_access_mode() == "full"
+                else self._max_agent_turns
+            )
+            turns_used = self._agent_turns
+        if turns_used >= turn_limit:
             self.activity.add(
                 "Agent",
                 f"Stopped automatic continuation after {turn_limit} agent turns.",
@@ -1805,9 +2409,14 @@ class AIChatView(QWidget):
             )
             self.status.setText("Agent turn limit")
             self._set_agent_active(False)
+            if goal is not None:
+                self._finish_goal_run("exhausted")
             return
 
         self._agent_turns += 1
+        if goal is not None:
+            self.goal_service.note_turn()
+            self._sync_goal_strip()
         self._set_agent_active(True)
         self._set_think_phase("thinking")
         context, context_status = self._build_context(context_question)
@@ -1988,6 +2597,15 @@ class AIChatView(QWidget):
     ) -> None:
         self._pending_edits = ()
         self.changes_card.hide()
+        # Vừa ghi tệp: bỏ đệm ngữ cảnh ngay. Khoá đệm vốn đã theo vân tay nội
+        # dung nên tự vô hiệu, nhưng đây là chốt thêm cho trường hợp tệp mới trùng
+        # cả size lẫn mtime_ns — lượt sau phải đọc lại từ đĩa, không phục vụ bản cũ.
+        self.context_service.invalidate()
+        # Ghi nhớ bản chụp vừa tạo: bước goal hoàn thành sẽ trỏ về nó để quay lui.
+        if backup:
+            self._last_applied_checkpoint = Path(str(backup)).name
+            if self.goal_service.active:
+                self.goal_service.record_checkpoint(self._last_applied_checkpoint)
         detail = f"Applied {len(paths)} file(s)"
         if backup:
             detail += f" · backup {backup}"
@@ -2095,6 +2713,9 @@ class AIChatView(QWidget):
         if self._cancel_requested:
             return
         tool = str(action.tool or "").lower()
+        if tool == "goal":
+            self._run_goal_tool(action, continue_after=continue_after)
+            return
         if tool == "run_app":
             args = action.args or {}
             op = str(args.get("op") or "run").lower()
@@ -2459,6 +3080,15 @@ class AIChatView(QWidget):
             self._pending_continue_question = None
             self._set_agent_active(False)
             return
+        # Goal Mode: lượt kế tiếp do trạng thái mục tiêu quyết định, không phải
+        # câu hỏi gốc. Trả "" nghĩa là mục tiêu đã xong / bị chặn / hết ngân sách
+        # -> dừng vòng lặp tự chủ thay vì tiếp tục vô ích.
+        if self.goal_service.active:
+            question = self._goal_continue_question(question)
+            if not question:
+                self._pending_continue_question = None
+                self._set_agent_active(False)
+                return
         self._set_agent_active(True)
         self._pending_continue_question = str(question or "Continue")
         if not (self._worker and self._worker.isRunning()):

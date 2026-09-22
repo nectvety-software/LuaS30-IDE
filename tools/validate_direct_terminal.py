@@ -33,8 +33,8 @@ if "QLineEdit#TerminalInput" in theme:
     errors.append("legacy terminal textbox theme still exists")
 if "QPlainTextEdit#TerminalSurface" not in theme:
     errors.append("TerminalSurface theme is missing")
-if 'VERSION = "1.0.1"' not in main:
-    errors.append("MainWindow version is not 1.0.1")
+if 'VERSION = "1.0.2"' not in main:
+    errors.append("MainWindow version is not 1.0.2")
 
 if errors:
     print("FAIL")

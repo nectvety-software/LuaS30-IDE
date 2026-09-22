@@ -5,9 +5,79 @@ Mọi thay đổi đáng chú ý của IDE, engine và Studio. Dạng tóm tắt
 [`doc/release/changelog/`](doc/release/changelog/) và
 kết quả kiểm tra tương ứng trong [`doc/release/validation/`](doc/release/validation/).
 
-Phiên bản phát hành Studio là `VERSION` (hiện là **1.0.1**); các mốc
+Phiên bản phát hành Studio là `VERSION` (hiện là **1.0.2**); các mốc
 1.x bên dưới là dòng tính năng của engine/workbench được giữ nguyên
 theo tên tệp tài liệu gốc.
+
+## [1.0.2] — 2026-09-21 · Modal chrome + template dự án
+
+- Toàn bộ hộp thoại modal của Studio chuyển sang **custom Title Bar
+  frameless** (họ `CustomDialog`: Notice/Confirm/TextInput/IntInput/
+  ColorPicker/FilePicker/RunSession/About/Setup), bo góc **12px** đồng bộ
+  thẻ `Cấu hình MediaTek MRE SDK`, viền `#3A3A56` — trừ cửa sổ giả lập giữ
+  chrome hệ thống. Riêng dòng "Mở dự án" dùng hộp chọn **thư mục Windows
+  gốc (native)** theo yêu cầu người dùng. Chuẩn + danh sách ngoại lệ:
+  [`doc/studio/MODAL_TITLEBAR_1_0_1.md`](doc/studio/MODAL_TITLEBAR_1_0_1.md).
+- Sửa lỗi THẬT tìm ra khi drive modal: xác nhận Delete trong cây dự án in
+  chuỗi `?\n\n` nguyên văn (escape đôi trong f-string `project_tree.py`).
+- `validate_about_credits.py` soi theme **merged** `APP_STYLE +
+  dark_theme.qss` đúng như app nạp — không còn render môi trường giả.
+- Merge các PR trên GitHub (`qeafivels`): selector **chọn template khi tạo
+  dự án**, template game đồ họa **DoodleQuest**, và luồng làm mới AI
+  assistant trong editor (tab nền + badge "AI Modified/Created" —
+  `validate_ai_assistant_ui_refresh.py`).
+- Template **Keypad Demo** (`templates/keypad-demo`) + mục chọn thứ 5 trong
+  `Cấu hình MediaTek MRE SDK`. `src/keypad.lua` là hợp đồng phím dùng lại được:
+  bảng trạng thái `pressed`/`released`, alias số `2/8/4/6/5`, `softleft` = menu /
+  `softright` = back, `drawPad()` vẽ bàn phím vật lý bằng `rect`/`text`;
+  `main.lua` minh hoạ 3 màn menu / kiểm tra phím / nhập số theo
+  `doc/ai/Keypad.md`. `templates/basic/main.lua` cũng được nâng lên mẫu wrapper
+  chuẩn của tài liệu (`input_up/down/left/right/ok`, alias số, `pause`/`resume`
+  gỡ trạng thái phím).
+- Sửa lỗi THẬT do harness bắt được: `K.press()` trả **thiếu cờ `fresh`**, nên
+  mọi nhánh chặn hành động lặp (`ok`, softkey, `clear`, `#`, `*`) không bao giờ
+  chạy — runtime gửi lại `keypressed` cho phím đang giữ (sự kiện repeat) gây
+  mở/nhập lặp. Validator tĩnh không thấy được lỗi này.
+- Guard mới: `validate_mre_project_wizard.py` khẳng định dialog ↔
+  `PROJECT_TEMPLATES` ↔ thư mục `templates/` khớp nhau (thêm template mà quên
+  một chỗ trước đây hỏng im lặng); `validate_keypad_skill.py` soi **code** Lua
+  template (bỏ comment trước khi tìm `KEY_*`/tên phím HOA).
+- Kiểm chứng thật bằng Lua 5.1 build từ `vendor/lua-5.1.5`:
+  `tools/keypad_template_check.lua` (37 assert) + `tools/basic_template_check.lua`
+  (10 assert), chạy qua `tools/validate_project_templates_e2e.py` trên **dự án
+  vừa tạo từ template**.
+- Tài liệu chi tiết: [`doc/release/changelog/CHANGELOG_STUDIO_1_0_1.md`](doc/release/changelog/CHANGELOG_STUDIO_1_0_1.md),
+  [`doc/release/validation/VALIDATION_STUDIO_1_0_1.md`](doc/release/validation/VALIDATION_STUDIO_1_0_1.md).
+- NUMBERING: đợt modal + PR này vào thẳng bản 1.0.1 đã phát hành (commit
+  `7c06961`/`d53ddd4`), bản 1.0.2 là **bản đóng gói đầu tiên** chứa chúng.
+- **Goal Mode** (`/goal`) — hệ thống tác vụ tự chủ cho AI Workbench: mục tiêu
+  bằng ngôn ngữ tự nhiên → agent tự chia bước → sửa tệp nguồn → tự chạy lệnh
+  debug → kiểm thử → xác nhận từng bước, cho tới khi xong. Trạng thái ở
+  `<project>/.luas30/ai_goal.json`, điều khiển bằng tool `goal`
+  (`plan`/`start`/`done`/`fail`/`blocked`/`finish`), dải tiến độ trong panel AI.
+  Ngân sách lượt có biên (8/40/80 theo access mode) — hết ngân sách thì dừng và
+  **giữ nguyên** mã đang dở, không tự xoá.
+- **Phục hồi trạng thái**: mỗi lần áp code ghi `checkpoint.json` vào
+  `.luas30/ai-backups/<stamp>/` (biết cả tệp AI **tạo mới** để xoá khi quay lui).
+  Hai kiểu quay lui tách bạch: `restore_checkpoint(s)` = hoàn tác ghi của `s`,
+  `rewind_to(s)` = hoàn tác mọi ghi **sau** `s`. Bị chặn giữa đường thì tự quay
+  lui về cuối bước đã xác nhận. Tệp **người dùng sửa tay** luôn được giữ nguyên
+  và báo lại; tệp do chính AI ghi ở bước sau mới được ghi đè.
+- **Tối ưu bộ nhớ đệm ngữ cảnh**: 3 tầng (nội dung tệp / tiền tố ổn định / chọn
+  nguồn), đo trên `templates/keypad-demo`: **32.8 ms → 4.7 ms (7×)**, 81% bundle
+  dùng lại. Vân tay cấu trúc dùng **tên mục** chứ không dùng mtime thư mục.
+- Sửa 3 lỗi THẬT mà harness bắt được, đều thuộc loại "hỏng im lặng": (1) tên op
+  của tool `goal` lệch giữa prompt và handler ⇒ mục tiêu đứng im không báo lỗi;
+  (2) `restore_checkpoint` dùng nhầm cho "quay về cuối bước N" ⇒ **lùi quá một
+  bước**; (3) `goal.turn_prompt()` gọi trên `Goal` trong khi hàm nằm ở
+  `GoalService`. Ngoài ra chốt an toàn "đừng ghi đè tệp sửa tay" từng chặn luôn
+  cả quay lui nhiều bước — nay phân biệt được hai nguyên nhân lệch.
+- Guard mới: `validate_ai_goal_mode.py` (11 phép thử, dựng **widget thật**
+  offscreen), `validate_ai_goal_rollback.py` (18 phép thử round-trip trên đĩa),
+  `validate_ai_context_cache.py` (9 phép thử, khẳng định **cả** chiều "không đọc
+  lại" **và** chiều "không được phục vụ nội dung cũ"); `studio_theme_check.py`
+  thêm mục E soi render dải mục tiêu (rò theme sáng, cắt chữ, khoá nút).
+- Tài liệu: [`doc/studio/AI_GOAL_MODE_1_0_2.md`](doc/studio/AI_GOAL_MODE_1_0_2.md).
 
 ## [1.0.1] — 2026-09-19 · Studio chrome VXPEngine
 

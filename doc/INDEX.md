@@ -78,6 +78,7 @@ doc/
 - [`studio/AI_AGENT_SHELL_1_14_0.md`](studio/AI_AGENT_SHELL_1_14_0.md) — visible AI activity/reasoning summary and approval-based integrated shell control.
 - [`studio/AI_WORKBENCH_V1_1_15_0.md`](studio/AI_WORKBENCH_V1_1_15_0.md) — access modes, provider test/apply, shell agent and reviewable AI code changes.
 - [`studio/AI_DESIGN_TOOLS.md`](studio/AI_DESIGN_TOOLS.md) — agent `ui_design`/`asset` tools: AI creates UI designs and generates PNG game assets.
+- [`studio/AI_GOAL_MODE_1_0_2.md`](studio/AI_GOAL_MODE_1_0_2.md) — Goal Mode (`/goal`): autonomous task loop, checkpoint rollback, context cache, permission modes.
 - [`studio/editor/CODE_EDITOR_1_3.md`](studio/editor/CODE_EDITOR_1_3.md)
 
 ## Phát triển

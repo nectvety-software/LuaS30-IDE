@@ -469,7 +469,7 @@ def main():
     shutil.rmtree(build/"toolchain-probe",ignore_errors=True)
     assert_native_sdk_independent(compat_profile)
 
-    print("=== LuaS30 IDE 1.0.1 AI Agent Shell Build ===")
+    print("=== LuaS30 IDE 1.0.2 AI Agent Shell Build ===")
     print("Runtime: LuaS30 Native SDK + embedded Lua 5.1.5")
     print("Artifact model: canonical generic VXP + optional install-time Nokia IMSI binding")
     print("S30+ compatibility:",compat_profile)

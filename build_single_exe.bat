@@ -1,8 +1,8 @@
 @echo off
 rem LuaS30 IDE - dong goi DUY NHAT 1 file Setup EXE (Inno Setup).
 rem Ket qua: dist\LuaS30IDE-Setup-<version>.exe (+ .sha256)
-rem   Cai dat:  LuaS30IDE-Setup-1.0.1.exe
-rem   Im lang:  LuaS30IDE-Setup-1.0.1.exe /SILENT
+rem   Cai dat:  LuaS30IDE-Setup-1.0.2.exe
+rem   Im lang:  LuaS30IDE-Setup-1.0.2.exe /SILENT
 rem
 rem Quy trinh: frozen exe (PyInstaller) -> stage -> verify -> Setup.
 rem Them --skip-frozen de bo qua buoc frozen (build nhanh, dung run.bat).

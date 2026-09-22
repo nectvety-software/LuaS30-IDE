@@ -15,7 +15,7 @@ view=(ROOT/"studio/app/vxpui/main_window.py").read_text(encoding="utf-8")
 panel=(ROOT/"studio/app/widgets/bottom_panel.py").read_text(encoding="utf-8")
 terminal=(ROOT/"studio/app/widgets/terminal_view.py").read_text(encoding="utf-8")
 
-for token in ('Bảng dưới (Console / Problems / Terminal)','Ctrl+J','Terminal','Ctrl+`','VERSION = "1.0.1"'):
+for token in ('Bảng dưới (Console / Problems / Terminal)','Ctrl+J','Terminal','Ctrl+`','VERSION = "1.0.2"'):
     if token not in main: errors.append("MainWindow missing: "+token)
 for token in ('def _toggle_console_panel','def _show_terminal_panel','terminal_action.triggered.connect(self._show_terminal_panel)','"active_key"'):
     if token not in view: errors.append("MainWindow panel wiring missing: "+token)
