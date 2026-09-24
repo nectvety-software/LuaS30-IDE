@@ -201,6 +201,43 @@ and shows offset, hex bytes and ASCII.
 
 > Emulator success does **not** replace testing on real hardware.
 
+### Emulator shell
+
+The emulator window is drawn as a phone: a 240×320 screen in the middle, a **21-key
+keypad** below it, and a **vertical icon rail on the right** (LDPlayer style) with
+7 tools — run/stop, load `.vxp`, screenshot, open capture folder, record video,
+rotate, fullscreen.
+
+The rail shows **icons only**; **hovering** one reveals the tool name in a bubble
+next to it. Icons reflect real state (`play` ↔ `stop`, accented border while a tool
+is active).
+
+The body carries a **status row**: the upper line reports whether the VXPEmu window
+has been embedded into the shell, the lower line shows `240×320 · 15 FPS`.
+
+### Keypad in the emulator
+
+**Hovering a key** shows the **key name** on the status row (the Lua contract name:
+`up`, `softleft`, `ok`…), plus the small legend if the key has one (`2 · abc`). The
+hovered key also lights up so you can tell which key the name belongs to. This is
+used instead of OS tooltips because tooltips are delayed and can be covered by
+another window.
+
+**Keys can be held.** Holding a key makes the app see the true *held* state —
+`engine.keypressed` and `engine.keyreleased` come in pairs, and the `held` table in
+`keypad.lua` actually works.
+
+> ⚠️ **The `#` key cannot be injected into VXPEmu.** This is a limitation of the
+> emulator itself, not a configuration error: the `#` key is still on the shell but
+> is **dimmed** and only works on real hardware. See
+> [`doc/ai/Keypad.md`](../../doc/ai/Keypad.md) §6.
+
+> ⚠️ **Lua `print()` goes nowhere** when running on VXPEmu. To observe values at
+> runtime you must **draw them to the screen** — do not rely on logs.
+
+Full documentation (including the traps when measuring pixels offscreen):
+[`doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md`](../../doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md).
+
 ## Settings
 
 `Settings` holds paths, target profile, compiler profile/toolchain root and build

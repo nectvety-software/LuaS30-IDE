@@ -96,6 +96,90 @@ The selector sits directly below the chat text box:
 
 The selector changes **confirmation behaviour**, not the **sandbox**.
 
+## Goal Mode (`/goal`)
+
+Type `/goal <objective in plain language>` to put the agent into an **autonomous
+loop**: it splits the objective into steps, edits source files, runs its own debug
+commands, tests, and confirms each step until the work is done.
+
+State lives at:
+
+```text
+<project>/.luas30/ai_goal.json
+```
+
+The agent drives it through the `goal` tool
+(`plan`/`start`/`done`/`fail`/`blocked`/`finish`), and a progress bar shows in the AI panel.
+
+> **The turn budget is bounded.** The maximum number of turns depends on the access
+> mode (wider in Full access) but there is **always a ceiling**. When the budget runs
+> out the agent **stops and keeps** the work in progress — it never discards what it
+> has already written.
+
+### State recovery (checkpoint / rollback)
+
+Every time code is applied, LuaS30 writes a checkpoint to:
+
+```text
+<project>/.luas30/ai-backups/<timestamp>/checkpoint.json
+```
+
+There are **two different rollbacks**, do not mix them up:
+
+| Operation | Meaning |
+|---|---|
+| `restore_checkpoint(s)` | undo what **step** `s` itself wrote |
+| `rewind_to(s)` | undo everything written **after** `s` — "back to the end of step N" uses this |
+
+If the agent gets blocked mid-way, it rolls back to the end of the last confirmed step.
+
+> **Files you edited by hand are always preserved** and the agent reports them. Only
+> files the agent itself wrote in a later step are overwritten during a rollback.
+
+Full documentation: [`doc/studio/AI_GOAL_MODE_1_0_2.md`](../../doc/studio/AI_GOAL_MODE_1_0_2.md).
+
+## Agent task memory
+
+The agent keeps a work log for the project:
+
+```text
+<project>/.luas30/ai_task.json
+```
+
+The log holds: the objective, the steps, notes/decisions, files touched, the next
+action, current blockers, and **observable evidence** (files written, commands run
+with their exit codes). The evidence part is recorded **automatically**, so the log
+stays useful even when the model forgets to update it.
+
+This log is injected into the prompt on **every turn** — unlike Goal Mode, which
+only applies once you type `/goal`. That means the first turn of a brand-new chat
+session already knows what was in progress, and you can close and reopen the IDE
+without losing the thread.
+
+When older conversation falls out of the context window, LuaS30 replaces it with a
+**summary** (no model call, no turns spent).
+
+If the model tries to stop in prose while the log still lists a next action, the IDE
+nudges it **exactly once** — not a loop, and never during Plan mode or Goal Mode.
+
+Full documentation: [`doc/studio/AI_TASK_MEMORY_1_0_2.md`](../../doc/studio/AI_TASK_MEMORY_1_0_2.md).
+
+## Idea suggestions from your earlier projects
+
+The agent is confined to the project you have open, so it **cannot read the other
+projects** in `Documents\LuaS30 Projects` on its own. So when you ask something like
+*"what style of game should I make"*, **the IDE scans for it** and hands the agent
+the results.
+
+- The catalogue is derived from each project's `project.json`, `README.md`,
+  `conf.lua` and the leading comment block of `main.lua`: genre, style, target,
+  screen count, modules.
+- Every line keeps its **quoted evidence**, so you can check it yourself — this is
+  not the model guessing.
+- The agent has a `projects` tool (`list` / `show` / `styles`) to query it on demand.
+
+Full documentation: [`doc/studio/AI_IDEA_SUGGEST_1_0_2.md`](../../doc/studio/AI_IDEA_SUGGEST_1_0_2.md).
+
 ## Activity and reasoning display
 
 LuaS30 does **not** display a provider's raw chain-of-thought. The panel shows:
@@ -216,6 +300,9 @@ Supported local commands:
 /resume
 /continue
 /rename <name>
+/goal <objective>    enable Goal Mode (autonomous loop)
+/task                show the agent work log
+/task clear          clear the work log
 /help
 ```
 

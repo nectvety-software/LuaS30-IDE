@@ -5,7 +5,7 @@ Mọi thay đổi đáng chú ý của IDE, engine và Studio. Dạng tóm tắt
 [`doc/release/changelog/`](doc/release/changelog/) và
 kết quả kiểm tra tương ứng trong [`doc/release/validation/`](doc/release/validation/).
 
-Phiên bản phát hành Studio là `VERSION` (hiện là **1.0.2**); các mốc
+Phiên bản phát hành Studio là `VERSION` (hiện là **1.0.3**); các mốc
 1.x bên dưới là dòng tính năng của engine/workbench được giữ nguyên
 theo tên tệp tài liệu gốc.
 
@@ -67,6 +67,11 @@ Chứng minh bằng chạy thật (cài im lặng vào temp, cấu hình cô l�
 bằng `winreg`). Kiểm chứng nội dung: suite đầy đủ **70 ok / 0 SKIP / 0 FAIL**
 khi chạy **không tương tác**; `validate_emulator_shell_frame.py` **710 phép
 kiểm**; phản chứng `build/_rp_emulator_shell_frame.py` **36/36**.
+
+Chi tiết đầy đủ theo hệ thống con:
+[`doc/release/changelog/CHANGELOG_STUDIO_1_0_3.md`](doc/release/changelog/CHANGELOG_STUDIO_1_0_3.md).
+Kết quả kiểm chứng (kể cả các phép đo **không** dùng được làm bằng chứng):
+[`doc/release/validation/VALIDATION_STUDIO_1_0_3.md`](doc/release/validation/VALIDATION_STUDIO_1_0_3.md).
 
 Chi tiết từng thay đổi:
 - **Goal Mode** (`/goal`) — hệ thống tác vụ tự chủ cho AI Workbench: mục tiêu

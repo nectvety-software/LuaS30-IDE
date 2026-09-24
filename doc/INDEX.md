@@ -56,6 +56,7 @@ doc/
 - [`launcher/SMART_LAUNCHER.md`](launcher/SMART_LAUNCHER.md)
 - [`configuration/USER_PATHS.md`](configuration/USER_PATHS.md)
 - [`toolchain/README.md`](toolchain/README.md)
+- [`../packaging/README.md`](../packaging/README.md) — đóng gói **1 file Setup EXE** (PyInstaller + Inno Setup), cạm bẫy scratch/`VERSION`, và cách kiểm chứng cài/gỡ.
 
 ## Studio
 
@@ -79,6 +80,10 @@ doc/
 - [`studio/AI_WORKBENCH_V1_1_15_0.md`](studio/AI_WORKBENCH_V1_1_15_0.md) — access modes, provider test/apply, shell agent and reviewable AI code changes.
 - [`studio/AI_DESIGN_TOOLS.md`](studio/AI_DESIGN_TOOLS.md) — agent `ui_design`/`asset` tools: AI creates UI designs and generates PNG game assets.
 - [`studio/AI_GOAL_MODE_1_0_2.md`](studio/AI_GOAL_MODE_1_0_2.md) — Goal Mode (`/goal`): autonomous task loop, checkpoint rollback, context cache, permission modes.
+- [`studio/AI_TASK_MEMORY_1_0_2.md`](studio/AI_TASK_MEMORY_1_0_2.md) — bộ nhớ công việc của AI Agent: `ai_task.json`, `<task_memory>`/`<goal_mode>`, cửa sổ replay và bản tóm tắt.
+- [`studio/AI_IDEA_SUGGEST_1_0_2.md`](studio/AI_IDEA_SUGGEST_1_0_2.md) — gợi ý ý tưởng theo dự án anh em: `<prior_work>`, khối `SUGGESTIONS`, tool `projects`.
+- [`studio/EMULATOR_SHELL_FRAME_1_0_2.md`](studio/EMULATOR_SHELL_FRAME_1_0_2.md) — vỏ máy giả lập "classic dark": rail icon, bong bóng tên, bàn phím MRE, và các bẫy đo pixel offscreen.
+- [`studio/POPART_CITY_3D_1_0_2.md`](studio/POPART_CITY_3D_1_0_2.md) — template dự án thứ 7 `popart-city-3d` (pseudo-3D raycasting).
 - [`studio/editor/CODE_EDITOR_1_3.md`](studio/editor/CODE_EDITOR_1_3.md)
 
 ## Phát triển
@@ -104,6 +109,7 @@ doc/
 - [`../CHANGELOG.md`](../CHANGELOG.md) — toàn bộ lịch sử tóm tắt một chỗ.
 - [`release/changelog/`](release/changelog/) — changelog đầy đủ theo phiên bản.
 - [`release/validation/`](release/validation/) — validation report theo phiên bản.
+- Bản đóng gói gần nhất: [`release/changelog/CHANGELOG_STUDIO_1_0_3.md`](release/changelog/CHANGELOG_STUDIO_1_0_3.md) + [`release/validation/VALIDATION_STUDIO_1_0_3.md`](release/validation/VALIDATION_STUDIO_1_0_3.md).
 
 ## Quy tắc quản lý
 

@@ -149,7 +149,7 @@ Cach xu ly dung, xep theo do uu tien:
 2. **Huong dan nguoi dung vuot canh bao (khi chua co cert).**
    Tai man hinh xanh: `More info` → `Run anyway`. Hoac go Mark-of-the-Web
    truoc khi chay: chuot phai file → Properties → tick `Unblock`,
-   hoac PowerShell: `Unblock-File .\LuaS30IDE-Setup-1.0.2.exe`.
+   hoac PowerShell: `Unblock-File .\LuaS30IDE-Setup-<version>.exe`.
    Chep file qua USB/o LAN noi bo (khong qua trinh duyet) cung khong bi gan
    Mark-of-the-Web.
 
@@ -193,7 +193,7 @@ dist\LuaS30IDE-<version>.msi
 Interactive:
 
 ```bat
-msiexec /i "dist\LuaS30IDE-1.0.2.msi"
+msiexec /i "dist\LuaS30IDE-<version>.msi"
 ```
 
 Silent / background (no UI), then auto-launch the IDE:
@@ -205,7 +205,7 @@ dist\install_silent.cmd
 or:
 
 ```bat
-msiexec /i "dist\LuaS30IDE-1.0.2.msi" /qn /norestart
+msiexec /i "dist\LuaS30IDE-<version>.msi" /qn /norestart
 ```
 
 Install root (per-user, like VXPEngine — no admin required):

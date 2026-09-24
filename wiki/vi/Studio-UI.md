@@ -196,6 +196,41 @@ trong sync manifest; HEX viewer phân trang 64 KiB, hiện offset + byte hex + A
 
 > Emulator pass **không** thay thế test trên thiết bị thật.
 
+### Vỏ máy giả lập
+
+Cửa sổ giả lập được vẽ như một chiếc điện thoại: màn hình 240×320 ở giữa, **bàn
+phím 21 phím** ở dưới, và một **rail icon dọc bên phải** (kiểu LDPlayer) gồm 7
+công cụ — chạy/dừng, nạp `.vxp`, chụp màn hình, mở thư mục ảnh, quay video, xoay,
+toàn màn hình.
+
+Rail **chỉ hiện icon**; **rê chuột** lên một icon thì tên công cụ hiện trong bong
+bóng bên cạnh. Icon đổi theo trạng thái thật (`play` ↔ `stop`, có viền nhấn khi
+công cụ đang bật).
+
+Trong thân máy có **hàng trạng thái**: dòng trên báo cửa sổ VXPEmu đã được nhúng
+vào shell hay chưa, dòng dưới hiện `240×320 · 15 FPS`.
+
+### Bàn phím trong emulator
+
+**Rê chuột lên một phím** thì **tên phím** hiện ra ngay trên hàng trạng thái (tên
+theo hợp đồng Lua: `up`, `softleft`, `ok`…), kèm chữ nhỏ nếu phím có (`2 · abc`).
+Phím đang trỏ cũng sáng lên để bạn biết tên đó ứng với phím nào. Cách này được
+chọn thay vì tooltip hệ điều hành vì tooltip trễ và có thể bị cửa sổ khác che.
+
+**Phím giữ được.** Nhấn giữ một phím thì app nhận đúng trạng thái *đang giữ* —
+`engine.keypressed` và `engine.keyreleased` thành cặp, bảng `held` trong
+`keypad.lua` hoạt động thật.
+
+> ⚠️ **Phím `#` không gửi được vào VXPEmu.** Đây là giới hạn của chính emulator,
+> không phải lỗi cấu hình: nút `#` vẫn có trên vỏ máy nhưng bị **làm mờ** và chỉ
+> chạy trên thiết bị thật. Xem [`doc/ai/Keypad.md`](../../doc/ai/Keypad.md) §6.
+
+> ⚠️ **`print()` của Lua không hiện ở đâu** khi chạy trên VXPEmu. Muốn quan sát
+> giá trị trong lúc chạy thì phải **vẽ lên màn hình**, đừng trông vào log.
+
+Tài liệu chi tiết (kể cả các bẫy khi đo pixel offscreen):
+[`doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md`](../../doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md).
+
 ## Settings
 
 `Settings` chứa đường dẫn, target profile, compiler profile/toolchain root và

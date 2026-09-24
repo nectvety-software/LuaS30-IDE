@@ -96,6 +96,86 @@ Selector nằm ngay dưới ô nhập chat:
 
 Selector đổi **hành vi xác nhận**, không đổi **sandbox**.
 
+## Goal Mode (`/goal`)
+
+Gõ `/goal <mục tiêu bằng ngôn ngữ tự nhiên>` để agent chạy **vòng lặp tự chủ**:
+tự chia mục tiêu thành các bước, sửa file nguồn, tự chạy lệnh debug, kiểm thử và
+xác nhận từng bước cho tới khi xong.
+
+Trạng thái nằm ở:
+
+```text
+<project>/.luas30/ai_goal.json
+```
+
+Agent điều khiển nó bằng tool `goal`
+(`plan`/`start`/`done`/`fail`/`blocked`/`finish`), và dải tiến độ hiện trong panel AI.
+
+> **Ngân sách lượt có biên.** Số lượt tối đa phụ thuộc chế độ truy cập (rộng hơn ở
+> Full access), nhưng **luôn có trần**. Hết ngân sách thì agent **dừng và giữ
+> nguyên** phần code đang dở — nó không tự xoá công việc đã làm.
+
+### Phục hồi trạng thái (checkpoint / quay lui)
+
+Mỗi lần áp code, LuaS30 ghi một checkpoint vào:
+
+```text
+<project>/.luas30/ai-backups/<timestamp>/checkpoint.json
+```
+
+Có **hai kiểu quay lui khác nhau**, đừng lẫn:
+
+| Kiểu | Ý nghĩa |
+|---|---|
+| `restore_checkpoint(s)` | hoàn tác những gì **của bước** `s` |
+| `rewind_to(s)` | hoàn tác mọi thay đổi **sau** `s` — "về cuối bước N" dùng cái này |
+
+Bị chặn giữa đường thì agent tự quay lui về cuối bước đã xác nhận.
+
+> **File bạn tự sửa tay luôn được giữ nguyên** và agent báo lại. Chỉ file do chính
+> agent ghi ở bước sau mới bị ghi đè khi quay lui.
+
+Tài liệu chi tiết: [`doc/studio/AI_GOAL_MODE_1_0_2.md`](../../doc/studio/AI_GOAL_MODE_1_0_2.md).
+
+## Bộ nhớ công việc của agent
+
+Agent ghi lại việc đang làm vào sổ của project:
+
+```text
+<project>/.luas30/ai_task.json
+```
+
+Sổ chứa: mục tiêu, các bước, ghi chú/quyết định, file đã đụng, việc kế tiếp, chỗ
+đang tắc, và **bằng chứng quan sát được** (file đã ghi, lệnh đã chạy kèm mã thoát).
+Phần bằng chứng được ghi **tự động**, nên sổ vẫn có ích kể cả khi model quên cập nhật.
+
+Sổ này được nhồi vào prompt ở **mọi lượt** — khác Goal Mode chỉ hoạt động khi bạn
+gõ `/goal`. Nhờ vậy lượt đầu tiên của một phiên chat hoàn toàn mới vẫn biết đang
+dở việc gì, và bạn có thể đóng IDE rồi mở lại mà không mất mạch.
+
+Khi phần hội thoại cũ đã ra khỏi cửa sổ ngữ cảnh, LuaS30 thay nó bằng một **bản
+tóm tắt** (không gọi model, không tốn lượt).
+
+Nếu model định dừng bằng lời trong khi sổ vẫn ghi còn việc kế tiếp, IDE nhắc nó
+**đúng một lần** — không phải vòng lặp, và không nhắc khi đang ở Plan mode hoặc
+Goal Mode.
+
+Tài liệu chi tiết: [`doc/studio/AI_TASK_MEMORY_1_0_2.md`](../../doc/studio/AI_TASK_MEMORY_1_0_2.md).
+
+## Gợi ý ý tưởng theo các project cũ của bạn
+
+Agent bị giới hạn trong project đang mở, nên nó **không tự đọc được** các project
+khác trong `Documents\LuaS30 Projects`. Vì vậy khi bạn hỏi kiểu *"làm game theo
+phong cách gì"*, **IDE quét hộ** rồi đưa kết quả cho agent.
+
+- Danh mục rút từ `project.json`, `README.md`, `conf.lua` và khối comment đầu
+  `main.lua` của từng project: thể loại, phong cách, target, số màn, mô-đun.
+- Mỗi dòng giữ lại **câu trích làm bằng chứng**, nên bạn kiểm lại được — không
+  phải model đoán.
+- Agent có tool `projects` (`list` / `show` / `styles`) để tra cứu khi cần.
+
+Tài liệu chi tiết: [`doc/studio/AI_IDEA_SUGGEST_1_0_2.md`](../../doc/studio/AI_IDEA_SUGGEST_1_0_2.md).
+
 ## Luồng hoạt động và reasoning
 
 LuaS30 **không** hiển thị chain-of-thought thô của provider. Panel hiển thị:
@@ -215,6 +295,9 @@ Lệnh cục bộ hỗ trợ:
 /resume
 /continue
 /rename <name>
+/goal <mục tiêu>     bật Goal Mode (vòng lặp tự chủ)
+/task                xem sổ công việc của agent
+/task clear          xoá sổ công việc
 /help
 ```
 
