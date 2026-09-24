@@ -83,6 +83,8 @@ PROJECT_TEMPLATE_OPTIONS = (
     ("ninja-runner", "Ninja Runner", "Game runner/parkour mẫu 240x320"),
     ("catbox-mre", "CatBoxMRE", "Mẫu game nâng cao với nhiều hệ thống"),
     ("keypad-demo", "Keypad Demo", "Hợp đồng phím S30+: menu, nhập số, bàn phím (doc/ai/Keypad.md)"),
+    ("popart-city-3d", "Pop Art City 3D",
+     "Thành phố giả 3D (raycasting DDA) phong cách pop-art: lái xe giao hàng, radar, truy nã"),
 )
 
 

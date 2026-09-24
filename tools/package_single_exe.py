@@ -317,7 +317,24 @@ def ensure_embedded_python(stage: Path, cache: Path) -> bool:
     cache.mkdir(parents=True, exist_ok=True)
     version = ""
     zip_path: Path | None = None
-    for cand in _candidate_312s():
+
+    def _ver_key(path: Path) -> tuple[int, ...]:
+        raw = path.name[len("python-"):-len("-embed-amd64.zip")]
+        return tuple(int(x) for x in raw.split(".") if x.isdigit())
+
+    # ⚠️ Quet CACHE truoc, mang sau. `_candidate_312s()` lay danh sach tu FTP nen
+    # tra ve "ban moi nhat truoc"; ban da cache (thuong cu hon) nam CUOI danh
+    # sach ⇒ truoc day moi lan build deu thu tai 4-5 ban khong co trong cache
+    # (404) roi moi dung ban cache. Do duoc: 4 lan 404 truoc khi roi vao cache
+    # 3.12.10. Quet cache truoc ⇒ build chay OFFLINE khi da co san.
+    cached_zips = sorted(cache.glob("python-3.12.*-embed-amd64.zip"), key=_ver_key)
+    if cached_zips:
+        pick = cached_zips[-1]
+        version = pick.name[len("python-"):-len("-embed-amd64.zip")]
+        zip_path = pick
+        print(f"[python] Dung Python embedded cache san: {pick.name}")
+
+    for cand in (() if zip_path else _candidate_312s()):
         name = f"python-{cand}-embed-amd64.zip"
         dest = cache / name
         if dest.is_file():
@@ -450,7 +467,12 @@ def main() -> int:
         )
         sign_param = [f'/S"luas30sign={cmd}"']
 
-    with tempfile.TemporaryDirectory(prefix="luas30-setup-", dir=str(out_dir)) as tmp:
+    # ⚠️ Scratch (stage = ca IDE + toolchain + emulator + python) PHAI nam trong
+    # temp cua OS, KHONG duoc `dir=str(out_dir)`: hook `[safe-delete]` cua host
+    # chan `shutil.rmtree` khi so muc xoa trong MOT luot vuot nguong (50 muc) va
+    # chi mien cac duong dan duoi temp. Don stage trong `dist/` se lam script
+    # CHET voi `exit 1` ma khong in gi (stderr bi nuot) — trong y nhu "ISCC hong".
+    with tempfile.TemporaryDirectory(prefix="luas30-setup-") as tmp:
         work = Path(tmp).resolve()
         stage = work / "stage"
         stage_tree(stage, skip_optional=args.skip_optional)

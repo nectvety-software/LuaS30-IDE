@@ -10,6 +10,15 @@ Read, in order:
 Then inspect `VERSION`, root `README.md`, `doc/INDEX.md`, the selected device profile
 and the current project template.
 
+### Optional add-on contracts
+
+| When the task is… | Also read |
+|---|---|
+| Memory / `not enough memory` / OOM | [`MEMORY_PROMPT.md`](MEMORY_PROMPT.md) + [`MEMORY_SKILLS.md`](MEMORY_SKILLS.md) |
+| Keypad / physical keys | [`Keypad.md`](Keypad.md) |
+| **Retro-Go style launcher / menu shell** | [`RETRO_GO_PROMPT.md`](RETRO_GO_PROMPT.md) + [`RETRO_GO_SKILL.md`](RETRO_GO_SKILL.md) |
+| **Files in cache / `@App` data dir (every project)** | [`CACHE_PROMPT.md`](CACHE_PROMPT.md) + [`CACHE_SKILL.md`](CACHE_SKILL.md) |
+
 Do not create project files before that preflight is complete.
 
 LuaS30's target-side policy is engine-only: application code should use the stable

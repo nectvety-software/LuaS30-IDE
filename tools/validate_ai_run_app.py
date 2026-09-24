@@ -216,7 +216,13 @@ def main() -> int:
         print(f"  [SKIP] bỏ phần hành vi: {exc}", flush=True)
 
     print("\n== KẾT QUẢ ==", flush=True)
-    print("FAIL:", FAILS or "khong co", flush=True)
+    # Đừng in "FAIL: khong co" khi mọi thứ đạt — đọc log sẽ tưởng hỏng.
+    if FAILS:
+        print(f"FAIL: {len(FAILS)} mục", flush=True)
+        for item in FAILS:
+            print("  -", item, flush=True)
+    else:
+        print("PASS: khong co loi", flush=True)
     return 1 if FAILS else 0
 
 

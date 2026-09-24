@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parent.parent
 errors = []
@@ -10,6 +11,25 @@ main = (ROOT / 'studio/app/vxpui/main_window.py').read_text(encoding='utf-8')
 skill = (ROOT / 'doc/ai/SKILL.md').read_text(encoding='utf-8')
 prompt = (ROOT / 'doc/ai/PROMPT.md').read_text(encoding='utf-8')
 
+# Trần lượt: canh BẤT BIẾN chứ không ghim con số. Ghim số thì mỗi lần chỉnh ngân sách
+# cho hợp lý là guard đỏ oan, và người ta sẽ "sửa" nó bằng cách đổi số — trong khi
+# điều thật sự phải giữ là: LUÔN có biên, và Full Access dài hơn nhưng vẫn có biên.
+_limit_agent = re.search(r'self\._max_agent_turns\s*=\s*(\d+)', chat)
+_limit_full = re.search(r'self\._max_full_access_turns\s*=\s*(\d+)', chat)
+if not _limit_agent:
+    errors.append('ChatAI agent UI missing: self._max_agent_turns = <số>')
+if not _limit_full:
+    errors.append('ChatAI agent UI missing: self._max_full_access_turns = <số>')
+if _limit_agent and _limit_full:
+    _agent_turns = int(_limit_agent.group(1))
+    _full_turns = int(_limit_full.group(1))
+    if _agent_turns < 1:
+        errors.append('trần lượt agent phải >= 1 (nếu không thì agent không bao giờ chạy)')
+    if _full_turns < _agent_turns:
+        errors.append('Full Access phải được nới rộng hơn chế độ thường')
+    if max(_agent_turns, _full_turns) >= 10_000:
+        errors.append('trần lượt bị bỏ hẳn — vòng lặp tự chạy sẽ không có biên')
+
 for token in (
     'AI ACTIVITY · REASONING SUMMARY',
     'high-level only',
@@ -17,8 +37,6 @@ for token in (
     'Run in Terminal',
     'def on_shell_command_finished',
     'def _queue_continue',
-    '_max_agent_turns = 8',
-    '_max_full_access_turns = 32',
     'def stop_agent',
     'apply_icon(self.send_button, "stop", 13)',
 ):

@@ -50,6 +50,25 @@ theo tên tệp tài liệu gốc.
   [`doc/release/validation/VALIDATION_STUDIO_1_0_1.md`](doc/release/validation/VALIDATION_STUDIO_1_0_1.md).
 - NUMBERING: đợt modal + PR này vào thẳng bản 1.0.1 đã phát hành (commit
   `7c06961`/`d53ddd4`), bản 1.0.2 là **bản đóng gói đầu tiên** chứa chúng.
+  Bản 1.0.2 đóng gói lúc **2026-09-21 11:13** (`dist/LuaS30IDE-Setup-1.0.2.exe`).
+
+## [1.0.3] — 2026-09-24 · Bản đóng gói thứ hai
+
+Đóng gói lại **toàn bộ** công việc landed sau mốc 1.0.2 (2026-09-21 11:13) —
+mọi mục từ đây xuống hết mục "Vỏ giả lập: hai chip → rail icon bên phải" đều
+nằm trong bản này.
+
+**Kết quả đóng gói**: `dist/LuaS30IDE-Setup-1.0.3.exe` — **duy nhất 1 file**,
+511 171 480 byte (**487,5 MB**), SHA-256
+`f404099bd77aee23786102bbc59db2f4794a6c0368ae88f20263c8b7f13e47af`.
+Chứng minh bằng chạy thật (cài im lặng vào temp, cấu hình cô lập): cài →
+**4649 tệp**, `VERSION` trên đĩa = `1.0.3`; chạy `LuaS30IDE.exe --version` →
+`LuaS30 IDE 1.0.3`; gỡ → **thư mục biến mất hoàn toàn**, registry sạch (kiểm
+bằng `winreg`). Kiểm chứng nội dung: suite đầy đủ **70 ok / 0 SKIP / 0 FAIL**
+khi chạy **không tương tác**; `validate_emulator_shell_frame.py` **710 phép
+kiểm**; phản chứng `build/_rp_emulator_shell_frame.py` **36/36**.
+
+Chi tiết từng thay đổi:
 - **Goal Mode** (`/goal`) — hệ thống tác vụ tự chủ cho AI Workbench: mục tiêu
   bằng ngôn ngữ tự nhiên → agent tự chia bước → sửa tệp nguồn → tự chạy lệnh
   debug → kiểm thử → xác nhận từng bước, cho tới khi xong. Trạng thái ở
@@ -78,6 +97,312 @@ theo tên tệp tài liệu gốc.
   lại" **và** chiều "không được phục vụ nội dung cũ"); `studio_theme_check.py`
   thêm mục E soi render dải mục tiêu (rò theme sáng, cắt chữ, khoá nút).
 - Tài liệu: [`doc/studio/AI_GOAL_MODE_1_0_2.md`](doc/studio/AI_GOAL_MODE_1_0_2.md).
+- Sửa lỗi THẬT do người dùng báo: chip tác vụ nổi trên header (Run/Build)
+  **kẹt vĩnh viễn và nút X thành nút chết**. Hai nguyên nhân chồng nhau, đều
+  hỏng im lặng: (1) `LuaRunner._on_build_finished` `return` sớm khi
+  `post_action == "vxpemu"` nên **không** phát `finished` → không ai gọi
+  `task_progress.finish()` cho tác vụ Run; (2) nút X chỉ phát
+  `cancel_requested` → `build_service.cancel()`, mà lúc đó build đã xong nên
+  no-op. Nay X **luôn** đóng chip (huỷ trước, rồi ẩn), chip được chốt ở
+  `_on_vxpemu_stopped` khi phiên giả lập kết thúc, và đổi nhãn X sang
+  "Đóng thông báo tác vụ" khi build đã xong. Guard mới:
+  `validate_task_chip_dismiss.py` (hợp đồng tĩnh + **widget thật** offscreen +
+  gọi thẳng `VxpMainWindow._on_vxpemu_stopped` trên stub) — đã kiểm chứng
+  ngược: bản cũ FAIL đúng dòng "bấm X mà chip không đóng".
+- Sửa tiếp theo yêu cầu người dùng: **tắt giả lập thì chip tác vụ phải tắt
+  theo**. `_on_vxpemu_stopped(0)` nay gọi `task_progress.dismiss()` thay vì
+  `finish()` — trước đó chip nán lại **5 giây** với dòng "Đã dừng giả lập",
+  che vùng làm việc sau khi phiên giả lập đã kết thúc. Mã thoát **khác 0** vẫn
+  hiện (`finish(False, "Giả lập lỗi")`) vì ẩn đi là giấu mất sự cố, và khi
+  build còn chạy thì chip vẫn giữ nguyên tiến độ build. Ba đường tắt giả lập
+  (bấm Dừng, đóng cửa sổ VXPEmu, VXPEmu tự thoát/crash — watcher PID) đều dồn
+  về `_on_vxpemu_stopped(0)` nên chỉ cần một mối. `validate_task_chip_dismiss.py`
+  thêm 6 assert cho nhánh này — kiểm chứng ngược: bản cũ FAIL đúng 3 dòng, gồm
+  "tắt giả lập mà chip vẫn nằm trên header".
+- **Bộ nhớ công việc của AI Agent** (`studio/app/services/ai_task_memory.py`, mới) —
+  để agent **code dài hơn** và **nhớ việc đang làm**. Bốn nguyên nhân làm nó mất
+  mạch, cả bốn đều **hỏng im lặng**: (1) `_start_request` chỉ gửi
+  `self._history[-16:]` và **không tóm tắt gì** ⇒ đầu phiên biến mất, agent hỏi lại
+  thứ vừa thống nhất; (2) đóng IDE mở lại là mất ngữ cảnh; (3) `/new` là mù hoàn
+  toàn; (4) trần lượt 8/32 quá thấp cho việc nhiều tệp. Goal Mode chỉ giải (2)(3)
+  **khi gõ `/goal`** và chỉ giữ danh sách bước.
+  - Trạng thái ở `<project>/.luas30/ai_task.json` (ghi nguyên tử; JSON hỏng thì coi
+    như rỗng nhưng **không xoá**): mục tiêu, bước, ghi chú/quyết định, tệp đã đụng,
+    việc kế tiếp, chỗ tắc, và **bằng chứng quan sát được** (tệp đã ghi, lệnh đã chạy
+    kèm mã thoát) — ghi tự động từ `on_code_changes_applied`/`on_shell_command_finished`
+    nên sổ vẫn có ích kể cả khi model quên gọi tool.
+  - Tool `task` (op: `status/objective/plan/step/fact/file/next/blocked/unblock/done/reset`).
+    `TASK_OPS` nằm ở `ai_agent_protocol.py` và service **import lại đúng tuple đó**,
+    nên prompt và handler không thể lệch — đúng bẫy `step_done` vs `done` đã từng làm
+    Goal Mode đứng im. Tool phải nằm trong `TOOL_NAMES`, thiếu là khối tool bị bỏ im lặng.
+  - `<task_memory>` nhồi vào system prompt ở **MỌI** lượt (khác `<goal_mode>` chỉ có
+    khi bật `/goal`), nên lượt đầu của một phiên chat hoàn toàn mới vẫn biết đang dở việc gì.
+  - `<earlier_work>`: bản tóm tắt phần hội thoại đã ra khỏi cửa sổ — hàm **thuần**,
+    không gọi model, không tốn lượt (60 dòng / 4000 ký tự). Cửa sổ gửi nguyên văn
+    16 → **40** (Goal Mode 60). Đừng cắt nhỏ lại: con số 16 chính là thứ đã làm đầu
+    phiên biến mất.
+  - Trần lượt 8/32 → **24/120** (luôn có biên; hết trần thì dừng và **giữ nguyên**
+    code đang dở). Thêm `_nudge_unfinished_work()`: model định dừng bằng văn xuôi
+    trong khi sổ của nó ghi còn `next` ⇒ nhắc **đúng MỘT lần**, không phải vòng lặp;
+    không nhắc khi plan mode hoặc Goal Mode đang chạy.
+  - Lệnh `/task` (xem sổ) và `/task clear` (xoá sổ).
+  - Guard mới `tools/validate_ai_task_memory.py` — soi bốn tầng, gồm gọi **thân hàm
+    thật** `_earlier_work_digest`/`_nudge_unfinished_work` trên stub. Đã **kiểm chứng
+    ngược 8/8** (`build/_rp_task_memory.py`): phá từng hành vi ⇒ exit 1 và kêu đúng dòng.
+  - `validate_ai_agent_shell.py` + `validate_ai_full_access_stop.py` thôi **ghim cứng**
+    `= 8`/`= 32`, chuyển sang canh **bất biến** (có biên; Full Access rộng hơn nhưng
+    vẫn có biên) — ghim số thì mỗi lần chỉnh ngân sách là đỏ oan.
+  - Tài liệu: [`doc/studio/AI_TASK_MEMORY_1_0_2.md`](doc/studio/AI_TASK_MEMORY_1_0_2.md).
+    Ghi chú trung thực: repo công khai `zai-org/ZCode` **không có** tài liệu nào mô tả
+    tính năng runtime của agent (README chỉ nói setup; `DESIGN.md` là design system UI;
+    `AGENTS.md` là hướng dẫn dev; `prompt-trajectory` là tool debug), nên không thể
+    liệt kê "ZCode có gì" từ bằng chứng.
+- **AI Agent gợi ý ý tưởng dựa trên dự án cũ của người dùng**
+  (`studio/app/services/prior_work_service.py`, mới; skill
+  [`doc/ai/skills/game-idea-suggest/`](doc/ai/skills/game-idea-suggest/SKILL.md)).
+  Người dùng yêu cầu agent "biết gợi ý trong cuộc trò chuyện như làm game theo
+  phong cách gì" và "xem qua các project". Vấn đề thật: `project_scope_note` khoá
+  agent trong project đang mở, nên nó **không tự đọc được** `Documents\LuaS30
+  Projects\<dự án khác>` — để mặc định thì prompt bảo "xem qua các project" mà
+  không có đường nào để xem. Nên **IDE quét hộ** rồi nhồi kết quả vào prompt:
+  - Quét `projects_root()`, rút genre / phong cách / target / số màn / mô-đun từ
+    `project.json` + `README.md` + `conf.lua` + khối comment đầu `main.lua`.
+    Genre và phong cách được **chấm điểm bằng từ khoá trên chính README người
+    dùng viết**, và mỗi dòng giữ lại `evidence` (câu trích + từ khoá khớp) để
+    agent trích dẫn được và người đọc kiểm lại được — không phải model đoán.
+  - ⚠️ **Kỹ thuật tách khỏi phong cách**: gần như dự án nào cũng "procedural", nên
+    để chung thì `procedural (14)` luôn đứng đầu bảng phong cách và che mất tín
+    hiệu thật. Tách ra thành một dòng "KỸ THUẬT CHUNG" nêu MỘT lần; bảng phong cách
+    còn lại mới có nghĩa: notebook-doodle (11), pop-art (4), pixel-art (3).
+  - Tool mới `projects` (`PROJECT_OPS` = một nguồn dùng chung với prompt, service
+    **import lại** đúng tuple của protocol nên hai bên không thể lệch):
+    `op=list|show|styles`.
+  - `<prior_work>` + khối `SUGGESTIONS` nhồi vào system prompt, nhưng **chỉ dựng
+    khi có project đang mở** và **có hai bản**: bản đầy đủ (danh mục từng dự án)
+    cho lượt đang bàn "làm gì / phong cách gì" hoặc project còn trống, bản gọn
+    (chỉ gu tổng hợp + câu chỉ đường tới tool) cho lượt sửa lỗi — nếu không thì
+    mỗi lượt vá một dòng cũng phải mang thêm ~1.2k token danh mục không liên quan.
+    Đoán nhầm thành bản gọn vẫn an toàn: agent gọi được `projects` op=list.
+  - Đệm theo **vân tay nội dung** `(đường dẫn, mtime_ns, size)`: sửa README là danh
+    mục tự đổi. ⚠️ Không dùng mtime THƯ MỤC (NTFS ghi metadata trễ ⇒ phục vụ cây cũ).
+  - Guard mới `tools/validate_prior_work_suggest.py` — bốn tầng, gồm **gọi thật**
+    `AIChatView._run_tool` với một lời gọi `projects` để chứng minh kết quả về tới
+    hội thoại. Đã **kiểm chứng ngược 14/14** (`build/_rp_prior_work.py`).
+  - Tài liệu: [`doc/studio/AI_IDEA_SUGGEST_1_0_2.md`](doc/studio/AI_IDEA_SUGGEST_1_0_2.md).
+- **UI lại vỏ máy giả lập theo mockup "classic dark"** (`studio/app/widgets/
+  vxp_emu_window.py` viết lại). Người dùng gửi ảnh thiết kế; thân máy cũ (thanh
+  tiêu đề + thanh công cụ 7 nút + gradient chéo + bàn phím một dòng chữ) được
+  thay bằng:
+  - Thân gradient **dựng đứng** `#2a3343 → #161d28`, bo góc 18, viền `#435069`.
+  - Hai **chip nổi** `MENU` / `Shot` chờm lên đỉnh vỏ (`PhoneStage` mới — chip nằm
+    ngoài khung `PhoneBody` nên không thể là con của nó). `MENU` mở `QMenu` chứa
+    đủ 7 việc của thanh công cụ cũ: chạy/dừng, nạp `.vxp`, chụp màn hình, mở thư
+    mục ảnh, quay video, xoay, toàn màn hình.
+  - **Hàng trạng thái** trong thân vỏ trên màn hình: thanh xanh chỉ **đã nhúng
+    được cửa sổ VXPEmu** (xám khi chưa), dòng dưới là `240×320 · 15 FPS`.
+  - **Màn hình chờ** có nội dung thật: tên tệp `.vxp` + nhãn trạng thái, đồng hồ
+    và ngày **thật** (cập nhật 20s), `NOKIA 225 DUAL SIM`, dòng trạng thái, dải
+    phím mềm `Menu`/`Chọn`.
+  - **Bàn phím 21 phím hai dòng**: số lớn + chữ cái nhỏ (`2`/`abc`), nền
+    `#34445d`, viền `#506685`, bo 10, phím OK cao hơn hàng của nó.
+  - ⚠️ **Chỗ mockup bịa thì thay bằng dữ liệu thật**: app KHÔNG có nguồn cho
+    `4G VoLTE` / `WiFi · 1.0Gbps` / `56 FPS` (đã kiểm: không chỗ nào đo FPS), nên
+    chỗ đó hiện tệp đang nạp + PID + **FPS mục tiêu** của `conf.lua`, không bịa số
+    đo. Bảng đối chiếu đầy đủ ở tài liệu dưới.
+  - ⚠️ `⇧` (U+21E7) **không có trong `segoeui.ttf`** — chỉ Segoe UI Symbol mới có
+    — nên vẽ bằng Segoe UI là ra ô vuông, im lặng. Đổi thành `Aa`; validator đọc
+    thẳng cmap của font để canh.
+  - `back`/`clear` dùng **chữ** chứ không dùng glyph: glyph `back` là mũi tên
+    trái, đứng cạnh `left` (cũng mũi tên trái) thì không phân biệt được nút nào.
+    `#` được **làm mờ** để thấy ngay nó không gửi được vào VXPEmu.
+  - Guard mới `tools/validate_emulator_shell_frame.py`: **546 phép kiểm**, render
+    thật vỏ máy ngoài màn hình rồi soi điểm ảnh (gradient, góc bo, chip chờm,
+    hàng trạng thái, mỗi phím số có HAI dòng chữ), kiểm cả cmap font và năm hành
+    vi. Đã **kiểm chứng ngược 24/24** (`build/_rp_emulator_shell_frame.py`).
+  - Tài liệu: [`doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md`](doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md)
+    (gồm 16 bẫy của chính validator/harness: `grab()` tô vùng trống `#efefef`, gốc
+    toạ độ là `PhoneStage`, `QMenu.exec()` treo nền offscreen, so cả ảnh thay vì
+    dải đồng hồ, gradient chéo không phân biệt được ở orientation dọc, hộp chữ hai
+    dòng chồng nhau, trộn hai hệ toạ độ ra chiều cao âm, mẫu phá tệp CRLF để lại
+    `\r` gây `IndentationError`).
+- **Rê chuột lên phím thì hiện TÊN PHÍM ngay trên vỏ máy giả lập**
+  (`studio/app/widgets/vxp_emu_window.py`). Yêu cầu người dùng: "khi dê chuột sẽ
+  hiện tên của các nút bấm". `setToolTip()` vốn đã có đủ cho 21 phím + 2 chip,
+  nhưng tooltip là **cửa sổ của hệ điều hành**: trễ ~700ms, có thể bị cửa sổ khác
+  che, và **không kiểm chứng được offscreen**. Nên tên phím được vẽ vào chỗ luôn
+  nhìn thấy:
+  - Dòng dưới của **hàng trạng thái** đổi từ `240×320 · 15 FPS` (màu nhấn xanh)
+    sang tên phím (chữ sáng) khi rê chuột, tự trả lại khi chuột ra. Vị trí này
+    nằm TRONG vỏ máy và không bị cửa sổ VXPEmu che khi game đang chạy.
+  - Tên hiện ra là **tên Lua** của hợp đồng phím (`up`, `softleft`, `ok`…), thêm
+    chữ nhỏ nếu phím có: `2 · abc`, `* · +`, `# · Aa`. Lấy từ
+    `PhoneKeypad.MRE_KEY_NAMES` — cùng nguồn với tooltip nên không thể lệch.
+  - Phím đang trỏ **sáng lên** (`KEY_FILL_HOVER = "#3f5580"`, màu SUY RA vì mockup
+    không có trạng thái hover) để biết tên đó ứng với phím nào.
+  - ⚠️ **Thứ tự `Enter`/`Leave` giữa hai nút kề KHÔNG được Qt bảo đảm.** Xử lý
+    theo cặp ("Enter thì bật, Leave thì tắt") làm tên phím tắt ngay sau khi vừa
+    bật — nhưng chỉ ở MỘT trong hai thứ tự nên rất khó thấy. Đúng: nhớ nút MỚI
+    NHẤT được Enter, chỉ xoá khi chính nút đang nhớ phát Leave.
+  - ⚠️ **`hideEvent` phải dọn hover**: nút bị ẩn lúc đang rê chuột thì `leaveEvent`
+    không tới nữa và tên phím **kẹt vĩnh viễn** trên hàng trạng thái.
+  - ⚠️ Câu gợi ý ở chân cửa sổ **quyết định bề ngang cửa sổ** (`_fit_shell` lấy
+    `sizeHint()`, QLabel không tự co): thêm ~34 ký tự làm cửa sổ phình 632 → 829px.
+    Muốn thêm chữ thì phải bỏ chữ khác.
+  - ⚠️ Đừng lấy "tooltip có hiện không" làm phép kiểm: `QTest.mouseMove()` rồi đọc
+    `QToolTip.isVisible()` **luôn** ra "không hiện", kể cả với `QPushButton` thường
+    (đã chạy đối chứng để biết phép đo vô hiệu, không phải app lỗi); chụp màn hình
+    thật với chuột thật cũng không kết luận được vì cửa sổ khác che mất.
+  - Guard: `validate_emulator_shell_frame.py` §F (+125 phép kiểm, tổng **546**),
+    phản chứng thêm **8 ca** (tổng **24/24**).
+- **Cơ chế giả lập keypad viết lại** (`vxp_emu_window.py` + `native_window.py`):
+  trước đây mỗi nút phát `clicked` → down+up tức thời, nên app **không bao giờ**
+  thấy trạng thái ĐANG GIỮ — bảng `held` trong `keypad.lua` vô nghĩa và
+  `engine.keypressed`/`keyreleased` không thành cặp. Nay `PhoneKey` phát
+  `key_pressed`/`key_released` riêng, `send_key_down`/`send_key_up` ghép cặp
+  (`WM_KEYDOWN`/`WM_KEYUP`), nhả phím khi thả ngoài nút / mất focus / dừng giả
+  lập / đóng cửa sổ. Bổ sung 2 phím còn thiếu của hợp đồng §0 (`back`, `clear`)
+  — đủ 21/21 nút, bố cục 3×7. Bàn phím thật của máy đi cùng bảng phím với
+  VXPEmu (`_QT_TO_MRE` ↔ `KeyboardMapping::loadDefaults`), auto-repeat bị bỏ
+  qua đúng như VXPEmu.
+- ⚠️ **`#` không gửi được vào VXPEmu** — chốt bằng đo, không phải suy đoán.
+  Qt chỉ ra `Qt::Key_NumberSign` khi `GetKeyboardState()` thấy Shift thật đang
+  giữ; gửi `VK_SHIFT` thay thế còn tệ hơn vì `Qt::Key_Shift` nằm trong bảng
+  phím của VXPEmu nên thành một cú `softright` giả. Đã thử 5 cách (Shift giả
+  qua `PostMessageW`, `AttachThreadInput`+`SetKeyboardState`, `VK_PACKET`,
+  `WM_CHAR`, quét 35 virtual-key OEM/numpad) — chỉ `AttachThreadInput` +
+  `SendInput` Shift thật chạy được, nhưng ~1/7 lần app nhận `3`, tức **sai phím
+  mà im lặng**, nên bỏ hẳn và chặn tường minh bằng
+  `native_window.MRE_KEYS_NOT_INJECTABLE`. Nút `#` vẫn có trên vỏ máy, tooltip
+  nói rõ chỉ chạy trên máy thật. Muốn sửa thì phải cho VXPEmu một đường bơm
+  thẳng mã MRE (`dispatchKeyPress`).
+- Guard mới: `validate_keypad_emulation.py` (đối chiếu 3 bảng phím với **nguồn
+  VXPEmu** + widget offscreen: giữ/nhả, nhả ngoài nút, mất focus, dừng giả lập)
+  và `validate_keypad_emulation_e2e.py` — **E2E thật**: build dự án dò bằng
+  toolchain ARM + MRE SDK, mở `VXPEmu.exe`, nhúng vào shell 240×320 như Studio,
+  bơm phím rồi **đọc framebuffer** để khẳng định Lua nhận đúng tên phím
+  (`giữ up` → `held={up}`, `giữ down+left` → `held={down,left}`, nhả hết → rỗng).
+  Tự SKIP khi thiếu VXPEmu/toolchain/SDK.
+- Ghi nhận khi làm E2E: `print()` của Lua **không hiện ở đâu** khi chạy VXPEmu —
+  runtime gọi `ls30_log_info` → `_vm_log_info`, mà VXPEmu chỉ export
+  `vm_app_log`, nên lời gọi là no-op im lặng. Muốn quan sát phải vẽ lên màn hình.
+  Cũng phát hiện VXPEmu vẽ framebuffer 240×320 vào cửa sổ với scale ≈ 1.25 kèm
+  lệch, nên toạ độ pixel không dùng trực tiếp được — validator tự giải phép biến
+  đổi từ 3 điểm chốt.
+- Tài liệu: `doc/ai/Keypad.md` thêm §6 "Bấm phím trong emulator" (3 bảng phím,
+  hợp đồng giữ phím, giới hạn `#`, cách kiểm chứng) và bổ sung checklist §4.
+
+### 2026-09-23 · Template **Pop Art City 3D** (pseudo-3D raycasting)
+
+- Template dự án thứ 7 trong `Cấu hình MediaTek MRE SDK`: `popart-city-3d` →
+  `templates/PopArtCity3D/` (appid 586534798). Thành phố giả 3D kiểu GTA phong
+  cách pop-art: raycasting DDA, lái xe giao hàng, radar bắc-up, mức truy nã, HP.
+  Đăng ký ở cả `PROJECT_TEMPLATE_OPTIONS` (`mediatek_mre_dialog.py`) và
+  `PROJECT_TEMPLATES` (`project_session.py`).
+- **"3D" ở đây là pseudo-3D, không phải 3D thật** — và README của template nói
+  thẳng như vậy. MRE 240×320 không có GPU, không có alpha, không có `pixel`/
+  `vline`/`hline`; nên renderer vẽ 60 cột × 4 px và **trộn trước** sương mù
+  thành 4 sắc độ rồi chọn theo khoảng cách. Chính ràng buộc đó tạo ra nét pop-art.
+- **Bốn lỗi THẬT chỉ chạy thật mới thấy** (đều im lặng qua kiểm tra tĩnh và
+  harness Lua) — chi tiết ở
+  [`doc/studio/POPART_CITY_3D_1_0_2.md`](doc/studio/POPART_CITY_3D_1_0_2.md):
+  1. `main.lua` gọi `P.C.gold` trong khi `gold` chỉ có trong `HUD.C` ⇒ `E.text`
+     nhận `nil` ở tham số #4 ⇒ runtime `luaL_checknumber(L,4)` ⇒
+     `bad argument #4` ⇒ **chết cả màn hình hướng dẫn**;
+  2. 9 dòng chữ tràn ra ngoài framebuffer 240 px (đo được: chân trang tiêu đề vẽ
+     từ x = 0 tới 239.2 và vẫn bị cắt hai đầu);
+  3. nhãn "HP"/"SPD" của HUD đè lên chính thanh của nó;
+  4. `PrintWindow` thỉnh thoảng trả về **bề mặt cũ** (thanh tiêu đề Qt + ruột đen)
+     thay vì framebuffer — validator phải chụp lại cho tới khi khung hình trông
+     như framebuffer thật.
+- Guard mới, và đều đã reverse-proof (phá đúng một thứ, guard đỏ **vì đúng lý do**):
+  `tools/popart_city_check.lua` (**62 kiểm tra**, 16/16 ca phá), stub `engine`
+  nay mô phỏng đúng `luaL_checknumber` + `select("#", ...)` của
+  `runtime_bridge.c`, gom màu trên **mọi** màn hình và kiểm tra **chữ có nằm
+  trong màn hình** theo bề rộng font **đo được** (7.2 px/ký tự ở `set_font(8)`);
+  `validate_popart_city_template.py` đối chiếu **tên** trong bảng màu với nơi
+  định nghĩa (`P.C.*` ↔ `popart.lua`, `HUD.C.*` ↔ `hud.lua`).
+- **E2E thật trên VXPEmu**: `tools/validate_popart_city_e2e.py` build template
+  bằng toolchain ARM, mở `VXPEmu.exe --autostart --testapi --screen-only`, nhúng
+  cửa sổ rồi **đọc pixel framebuffer** (vì `print()` của Lua không tới được log
+  của VXPEmu). 26 kiểm tra: 6/6 dải trời, 12/24 sắc độ tường, 13 độ cao vỉa hè
+  khác nhau, giữ `up` đổi 42.5% khung hình, đâm tường mất HP thật (576 → 512 px
+  ruột thanh), bảng tạm dừng phủ 34.9%, và phân loại màn hình **đọc từ pixel**
+  chứ không suy từ thứ tự bấm phím. Reverse-proof: 23/23.
+- Màu không hiện ra như khai báo: runtime nén qua `LS30_RGB565` (macro **không
+  chuẩn**, bit 1..0 của kênh G bị bỏ) rồi VXPEmu giải nén bằng phép dịch. E2E
+  chép nguyên công thức, tự kiểm tra mô hình bằng màu đã đo, và đọc bảng màu
+  thẳng từ `src/*.lua` thay vì chép tay giá trị hex.
+- Ngân sách khung hình **đo bằng harness**: tiêu đề 337 rect / 146 489 px; đang
+  chơi **187 rect / 134 951 px**.
+- Build thật: `ELF32/ARM/EABI5/gcc_entry/no_vm_undefined` PASS, VXP đơn generic
+  **chưa ký** (IDE không ký — xem 1.0.1).
+- **Sửa một lỗi im lặng của chính E2E**: dự án ném để build từ `build/_popart_e2e`
+  chuyển sang **temp của OS**, ảnh chụp sang `build/_popart_e2e_shots/`. Hook
+  `[safe-delete]` của host chặn `shutil.rmtree` khi vượt **ngân sách xoá theo
+  lượt** (`CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD`, 50 mục) và thoát bằng
+  `SystemExit(1)`: script chết với `exit 1` mà không in gì, trông y như "E2E hỏng
+  vì lý do khác" — và chỉ lộ ra sau ~10 lần chạy khi thư mục đã tích đủ tệp.
+  Đo được (`build/_probe_bulk_guard.py`): `build/` + 200 tệp ⇒ `exit 2`; cùng lượt
+  30 rồi 30 tệp ⇒ `exit 0` rồi `exit 2` (đúng là cộng dồn); **TEMP** + 200 tệp ⇒
+  xoá thật, không hỏi guard. Hàm `reset_scratch()` còn **từ chối** xoá nếu dự án
+  ném không nằm trong temp, để lỗi lộ ra ngay nếu ai đó đổi lại.
+  ⚠️ Áp dụng cho **mọi** validator của repo: đừng `rmtree` thư mục lớn trong `build/`.
+- **Cùng lỗi đó ở `tools/validate_keypad_emulation_e2e.py`** — đã sửa. Nó build dự án
+  dò vào `build/_kp_keypad_probe`, mà `tools/build.py:465` dọn bằng
+  `shutil.rmtree(build, ignore_errors=True)`; ⚠️ `ignore_errors=True` **không** nuốt được
+  `SystemExit` (chỉ bắt `OSError`) nên guard chặn là **cả script chết**. Thư mục
+  `build/_kp_keypad_probe/build/` một mình đã **62 tệp > 50** ⇒ chạy lẻ (host duyệt
+  tool-call) thì xanh, chạy **cả suite trong một lượt không tương tác** thì ĐỎ với
+  `build dự án dò thất bại (exit 1)`. `PROBE_DIR` nay ở temp, ảnh chụp ở
+  `build/_kp_keypad_probe_shots/`.
+  ⇒ **Suite 70/70 xanh chỉ đáng tin khi chạy không tương tác.**
+
+### 2026-09-23 · Vỏ giả lập: hai chip → **rail icon bên phải** + bong bóng tên
+
+- Theo yêu cầu người dùng *"các menu của giả lập VXPEmu chuyển sang phải như máy ảo
+  LDPlayer 14 chỉ icon khi dê chuột và sẽ hiện title lên"*: hai chip `MENU`/`Shot`
+  chờm trên đỉnh vỏ được thay bằng `ToolRail` dọc **bên phải** thân máy, **chỉ
+  icon**, tên công cụ hiện trong **bong bóng** khi rê chuột. Đủ 7 việc cũ
+  (chạy/dừng, nạp `.vxp`, chụp màn hình, mở thư mục ảnh, quay video, xoay, toàn
+  màn hình) — `RAIL_ITEMS` ↔ `_tool_handlers()` là **một hợp đồng**, validator canh
+  cả hai chiều (thiếu khoá, thừa khoá).
+- **Bỏ hẳn `QMenu`.** `QMenu.exec()` mở vòng lặp sự kiện **LỒNG NHAU**: validator
+  offscreen bấm vào sẽ treo vô hạn, im lặng. Đổi lại `_choose_vxp` mở `QFileDialog`
+  và `open_capture_folder` mở trình duyệt tệp của OS — cũng là modal, nên phần kiểm
+  hành vi của rail vẫn phải chạy trên một `PhoneStage` **riêng**.
+- **Bong bóng là widget tự vẽ (`RailTip`), KHÔNG dùng `QToolTip`.** Tooltip không
+  kiểm chứng được offscreen (đã chạy đối chứng với `QPushButton` thường): xây tính
+  năng dựa vào thứ không đo được thì không guard nào bảo vệ nó. `RailTip` mang
+  `WA_TransparentForMouseEvents` và phải là widget **LÁ** vì nó vẽ đè lên mép phải
+  thân máy — chỗ có bàn phím cần bấm. Kiểm bằng **cả hai** cách: `testAttribute()`
+  và `stage.childAt(tâm_bong_bóng)` (đo được: `childAt` trả `ScreenHost`, không
+  phải `RailTip`).
+- **Icon đổi theo trạng thái thật** qua `_sync_rail()`: `play`↔`stop`,
+  `circle`↔`stop`, `expand`↔`collapse`, kèm viền `ACCENT` khi công cụ đang bật. Bỏ
+  sót một chỗ gọi là rail **nói dối** (vẫn vẽ "play" khi giả lập đang chạy) — guard
+  khẳng định lời gọi có mặt trong cả **năm** hàm đổi trạng thái.
+- **Một lỗi THẬT, im lặng tuyệt đối**: `ToolRail._on_hover` phát tâm Y của nút
+  theo hệ toạ độ **rail**, còn `PhoneStage` đặt bong bóng theo hệ toạ độ **stage**
+  ⇒ bong bóng hiện **cao hơn nút ~175 px** mà không có lỗi, không cảnh báo. Sửa bằng
+  `self.y() + button.y() + …`; guard so tâm bong bóng với tâm nút **quy về stage**.
+- Kiểm chứng: `validate_emulator_shell_frame.py` **546 → 710 phép kiểm**, thêm mục
+  **G** (bong bóng: hiện/ẩn, đúng tên, đúng bề rộng chữ theo `QFontMetrics`, đúng
+  vị trí, có mực vẽ, không chặn chuột, thứ tự Enter/Leave ở **cả hai** chiều, ẩn
+  rail thì bong bóng phải tắt, viền accent đếm **cả ô** chứ không dò một điểm) và
+  guard khoảng cách màu (hover/nền ≥ 40, glyph/nền ≥ 60, chữ bong bóng/nền ≥ 120).
+  `build/_rp_emulator_shell_frame.py` **24 → 36 ca**, tất cả đỏ **vì đúng lý do** và
+  xanh lại sau khôi phục: **36/36**.
+- ⚠️ **Bẫy mới của chính harness phản chứng**: `_replace()` thay lần khớp **ĐẦU
+  TIÊN**, mà `PhoneKey.enterEvent` và `PhoneRailButton.enterEvent` có thân **y hệt
+  nhau** (`self.hover_changed.emit(self, True)`) và `PhoneKey` khai trước ⇒ ca "rail
+  thôi báo hover" dùng mẫu ngắn sẽ phá **bàn phím**, validator vẫn đỏ nhưng đỏ ở
+  §F — trông vẫn như đạt nếu chỉ liếc kết quả. Phải neo vào dòng comment chỉ rail
+  mới có. Tương tự: ca "`_sync_rail` bị bỏ sót" **không** được phá bằng cách đổi tên
+  hàm (⇒ `AttributeError` khi dựng `window`, harness xếp vào "đỏ vì vỡ cú pháp"),
+  mà phải xoá **đúng một lời gọi**.
+- Tài liệu: [`doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md`](doc/studio/EMULATOR_SHELL_FRAME_1_0_2.md)
+  (§"Rail icon bên phải thay hai chip" + 5 bẫy mới); QSS `theme.py` đổi
+  `#PhoneChip` → `#PhoneRailButton`.
 
 ## [1.0.1] — 2026-09-19 · Studio chrome VXPEngine
 

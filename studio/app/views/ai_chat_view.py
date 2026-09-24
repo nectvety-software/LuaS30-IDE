@@ -34,6 +34,8 @@ from app.services.ai_goal_service import (
     GoalError,
     GoalService,
 )
+from app.services.ai_task_memory import TaskMemory, TaskMemoryError
+from app.services.prior_work_service import PriorWorkService
 from app.ui import palette
 from app.ui.icons import apply_icon, font_icon
 from app.vxpui.custom_dialog import ConfirmDialog, TextInputDialog
@@ -280,9 +282,21 @@ class AIChatView(QWidget):
         self._think_timer.timeout.connect(self._tick_thinking)
         self._last_question = ""
         self._pending_continue_question: str | None = None
+        # Đã nhắc "sổ còn việc" trong lượt người dùng này chưa — chỉ nhắc một lần.
+        self._task_nudge_used = False
         self._agent_turns = 0
-        self._max_agent_turns = 8
-        self._max_full_access_turns = 32
+        # Trần lượt: đủ rộng cho một việc code DÀI (nhiều tệp, build, sửa, kiểm thử
+        # lại) mà vẫn LUÔN có biên — vòng lặp tự chạy không bao giờ vô hạn. Hết trần
+        # thì agent dừng và GIỮ NGUYÊN code đang dở, không tự xoá.
+        self._max_agent_turns = 24
+        self._max_full_access_turns = 120
+        # Bộ nhớ công việc đang làm (`.luas30/ai_task.json`): khác Goal Mode ở chỗ
+        # LUÔN bật, không cần /goal, và sống qua cả một phiên chat hoàn toàn mới.
+        self.task_memory = TaskMemory()
+        # Danh mục các dự án LuaS30 KHÁC của người dùng (quét từ `projects_root()`).
+        # Agent không tự đọc được vì bị khoá trong project đang mở, nên IDE quét hộ
+        # rồi nhét vào prompt dưới <prior_work> — nền tảng cho việc gợi ý phong cách.
+        self.prior_work = PriorWorkService()
         # Goal Mode: trần lượt cho một mục tiêu lấy từ chính goal (turn_budget),
         # không phải từ access mode — mục tiêu lớn cần nhiều lượt hơn một câu hỏi.
         self.goal_service = GoalService()
@@ -993,6 +1007,7 @@ class AIChatView(QWidget):
         self._last_question = ""
         self._pending_continue_question = None
         self._agent_turns = 0
+        self._task_nudge_used = False
         self.activity.clear()
         self.shell_card.hide()
         self.changes_card.hide()
@@ -1217,6 +1232,9 @@ class AIChatView(QWidget):
         self.project_root = new_root
         # Mỗi project có mục tiêu riêng: đổi project là nạp lại goal của project đó.
         self._attach_goal()
+        # Bộ nhớ công việc cũng theo project — đổi project là nạp đúng bộ nhớ của nó,
+        # không thì agent sẽ tưởng đang dở việc của project khác.
+        self._attach_task_memory()
         self.context_badge.setText(self.project_root.name if self.project_root else "No project")
         self.context_badge.setToolTip(
             (f"Context root: {self.project_root}\n" if self.project_root else "")
@@ -1397,12 +1415,49 @@ class AIChatView(QWidget):
         "Ví dụ: /goal sửa lỗi bàn phím trong template keypad-demo rồi chạy thử kiểm chứng"
     )
 
+    def _handle_task_command(self, tail: str) -> bool:
+        """`/task` — xem SỔ CÔNG VIỆC ĐANG LÀM của project; `/task clear` để xoá.
+
+        Khác `/goal`: sổ này luôn tồn tại và không có vòng đời mục tiêu, nên lệnh
+        chỉ có hai việc — đọc ra và xoá đi.
+        """
+        value = str(tail or "").strip().lower()
+        if value in {"clear", "reset", "xoa", "xoá", "xóa"}:
+            self.task_memory.reset("người dùng yêu cầu /task clear")
+            self._append_message("assistant", "🧹 Đã xoá sổ công việc của project này.")
+            self.activity.add("Task", "Đã xoá sổ công việc", "context")
+            return True
+        if not self.project_root:
+            self._append_message(
+                "assistant", "Chưa mở project nào nên chưa có sổ công việc."
+            )
+            return True
+        self._append_message("assistant", self.task_memory.summary_text())
+        return True
+
     def _attach_goal(self) -> None:
         """Gắn GoalService vào project đang mở (mỗi project có mục tiêu riêng)."""
         self.goal_service.attach(self.project_root)
         self._goal_turns_used = 0
         self._last_applied_checkpoint = ""
         self._sync_goal_strip()
+
+    def _attach_task_memory(self) -> None:
+        """Gắn bộ nhớ công việc vào project đang mở (mỗi project một bộ nhớ riêng).
+
+        Không có project nào mở thì bộ nhớ rỗng và `prompt_block()` trả "" — agent
+        chạy y như trước, không có khối chỉ dẫn thừa trong prompt.
+        """
+        self.task_memory.attach(self.project_root)
+        state = self.task_memory.state
+        if state.has_work:
+            # Nói ra lúc nạp để người dùng biết agent đang nhớ lại việc gì, thay vì
+            # tự hỏi tại sao nó đột nhiên nhắc tới bước 3 của một việc cũ.
+            self.activity.add(
+                "Task",
+                f"Nhớ lại: {state.objective or 'công việc dở'} · {state.progress_text()}",
+                "context",
+            )
 
     def _sync_goal_strip(self) -> None:
         """Vẽ lại dải tiến độ từ trạng thái goal thật (không giữ bản sao riêng)."""
@@ -1585,6 +1640,52 @@ class AIChatView(QWidget):
             self.status.setText(f"Goal {op}; AI tiếp tục...")
             # `_queue_continue` tự thay bằng câu nhắc của mục tiêu và tự dừng nếu
             # mục tiêu đã kết thúc — không nhân bản logic đó ở đây.
+            self._queue_continue("Continue")
+
+    def _run_task_tool(self, action: ToolAction, *, continue_after: bool = True) -> None:
+        """Xử lý tool `task`: agent tự ghi SỔ CÔNG VIỆC ĐANG LÀM.
+
+        Khác tool `goal`: không có vòng đời mục tiêu, không ngân sách riêng, không
+        quay lui, không cần `/goal`. Đây chỉ là cuốn sổ — nhưng là cuốn sổ giúp lượt
+        sau (kể cả lượt của một phiên chat mới, hoặc sau khi khởi động lại IDE) biết
+        đang dở việc gì.
+
+        Op hợp lệ lấy từ `TASK_OPS` mà `TaskMemory.handle_op` cũng đối chiếu, nên
+        prompt và handler không thể lệch nhau — đúng cái bẫy đã làm Goal Mode đứng
+        im một lần (`step_done` vs `done`).
+        """
+        args = dict(action.args or {})
+        op = str(args.get("op") or "status").strip().lower()
+        try:
+            result = self.task_memory.handle_op(op, args)
+            tone = "success"
+        except TaskMemoryError as exc:
+            result = f"task: {exc}"
+            tone = "warning"
+        except Exception as exc:  # noqa: BLE001 - ghi sổ hỏng không được giết cả lượt
+            result = f"task error: {exc}"
+            tone = "error"
+
+        self.activity.add("Task", action.reason or result.splitlines()[0][:160], tone)
+
+        if op == "status":
+            # Người dùng hỏi "đang làm gì" — hiện nguyên sổ, không bắt model thuật lại.
+            self._append_message("assistant", self.task_memory.summary_text())
+
+        self._history.append(
+            {
+                "role": "user",
+                "content": (
+                    "Task memory result:\n" + result
+                    + "\n\nSổ công việc đã cập nhật. Tiếp tục công việc đang làm; nếu "
+                    "còn dở thì ghi `next`, nếu xong thật thì ghi `done` kèm bằng chứng."
+                ),
+                "_internal": True,
+            }
+        )
+        self._persist_session()
+        if continue_after:
+            self.status.setText("Đã ghi sổ công việc; AI tiếp tục...")
             self._queue_continue("Continue")
 
     def _finish_goal_run(self, why: str) -> None:
@@ -1883,6 +1984,8 @@ class AIChatView(QWidget):
             return True
         if command == "/goal":
             return self._handle_goal_command(tail)
+        if command == "/task":
+            return self._handle_task_command(tail)
         if command == "/skills":
             skill_service = getattr(self.tool_service, "skill_service", None)
             skills = skill_service.discover(self.project_root) if skill_service else []
@@ -2197,9 +2300,60 @@ class AIChatView(QWidget):
             return "auto"
         return "ask"
 
-    def _system_prompt(self, context: str) -> str:
+    # Từ khoá nhận biết lượt đang BÀN VỀ VIỆC CHỌN LÀM GÌ. Chỉ những lượt này mới
+    # cần toàn bộ danh mục dự án cũ nằm sẵn trong prompt; các lượt khác nhận bản
+    # gọn vì agent vẫn gọi được tool `projects` khi cần.
+    IDEA_KEYWORDS = (
+        "gợi ý", "ý tưởng", "y tuong", "phong cách", "phong cach", "thể loại",
+        "the loai", "làm gì", "lam gi", "nên làm", "nen lam", "game gì",
+        "bắt đầu từ đâu", "sáng tạo", "sang tao",
+        "idea", "ideas", "suggest", "suggestion", "inspiration", "brainstorm",
+        "what should i", "what should we", "game style", "art style", "genre",
+    )
+
+    def _question_wants_ideas(self, question: str) -> bool:
+        """Lượt này có đang bàn 'làm game gì / phong cách gì' không?
+
+        Sai một chiều vẫn an toàn: đoán nhầm thành False thì agent vẫn gọi được
+        tool `projects` op=list để lấy danh mục — mất chút token, KHÔNG mất khả
+        năng. Đổi lại, mỗi lượt sửa lỗi bình thường không phải mang thêm ~1.2k
+        token danh mục không liên quan.
+        """
+        text = " ".join(str(question or "").lower().split())
+        if any(keyword in text for keyword in self.IDEA_KEYWORDS):
+            return True
+        # Project còn trống (chưa có main.lua) = đang dựng cái mới, gần như chắc
+        # chắn đang cân nhắc làm gì.
+        root = self.project_root
+        if root is None:
+            return False
+        try:
+            return not (Path(root) / "main.lua").is_file()
+        except OSError:
+            return False
+
+    def _system_prompt(self, context: str, question: str = "") -> str:
         plan_mode = self.current_access_mode() == "plan"
         goal_block = self.goal_service.prompt_block()
+        # Bộ nhớ công việc: LUÔN có mặt (khác <goal_mode> chỉ có khi bật /goal), nên
+        # lượt đầu tiên của một phiên chat hoàn toàn mới vẫn biết đang dở việc gì.
+        task_block = self.task_memory.prompt_block()
+        # Phần việc đã bị đẩy ra khỏi cửa sổ hội thoại (xem _replay_window) — không
+        # có nó thì đầu phiên biến mất im lặng khi phiên dài.
+        digest = self._earlier_work_digest()
+        # Danh mục dự án cũ của người dùng: agent bị khoá trong project đang mở nên
+        # KHÔNG tự đọc được `Documents\LuaS30 Projects\<dự án khác>` — IDE quét hộ.
+        # Đây là căn cứ để nó gợi ý phong cách thay vì đoán chung chung.
+        #
+        # Chỉ dựng khi CÓ project đang mở, và phải khớp với `prior_work=` truyền cho
+        # `agent_protocol_prompt` bên dưới. Lệch nhau thì prompt rơi vào trạng thái
+        # nửa vời: có <prior_work> nhưng không có chỉ dẫn dùng nó (hoặc ngược lại) —
+        # đúng kiểu hỏng im lặng mà validator canh.
+        prior_block = ""
+        if self.project_root:
+            prior_block = self.prior_work.prompt_block(
+                self.project_root, full=self._question_wants_ideas(question)
+            )
         return (
             "You are LuaS30 Studio AI Workbench, a codebase-aware engineering agent "
             "specialised in Lua 5.1 programming for Nokia S30+ MRE .vxp projects running "
@@ -2227,11 +2381,71 @@ class AIChatView(QWidget):
                 plan_mode=plan_mode,
                 full_access=self.current_access_mode() == "full",
                 goal_mode=bool(goal_block),
+                task_memory=bool(self.project_root),
+                prior_work=bool(self.project_root),
             )
             + "\n\n"
             + goal_block
             + ("\n\n" if goal_block else "")
+            + task_block
+            + ("\n\n" if task_block else "")
+            + digest
+            + ("\n\n" if digest else "")
+            + prior_block
+            + ("\n\n" if prior_block else "")
             + context
+        )
+
+    # Số tin nhắn gần nhất gửi NGUYÊN VĂN cho model. Rộng hơn con số 16 cũ để một
+    # việc code dài không mất mạch giữa chừng; phần cũ hơn KHÔNG bị cắt im lặng nữa
+    # mà được thay bằng bản tóm tắt ở `_earlier_work_digest()`.
+    REPLAY_WINDOW = 40
+    DIGEST_MAX_CHARS = 4000
+    DIGEST_MAX_ROWS = 60
+
+    def _replay_window(self) -> int:
+        """Số tin nhắn gửi nguyên văn; Goal Mode rộng hơn vì mỗi bước là nhiều lượt."""
+        if self.goal_service.active:
+            return max(self.REPLAY_WINDOW, 60)
+        return self.REPLAY_WINDOW
+
+    def _earlier_work_digest(self) -> str:
+        """Tóm tắt phần hội thoại đã ra khỏi cửa sổ gửi nguyên văn.
+
+        Trước đây `_start_request` chỉ gửi `self._history[-16:]`: việc đã bàn ở đầu
+        một phiên dài biến mất KHÔNG một dấu vết, và triệu chứng là agent hỏi lại
+        đúng thứ vừa thống nhất xong. Bản tóm tắt này là hàm THUẦN — không gọi model,
+        không tốn lượt: lấy câu hỏi người dùng, câu trả lời và các hành động đã chạy,
+        nén thành một dòng mỗi lượt.
+        """
+        window = self._replay_window()
+        older = self._history[:-window] if len(self._history) > window else []
+        if not older:
+            return ""
+        rows: list[str] = []
+        for item in older:
+            role = str(item.get("role") or "")
+            text = " ".join(str(item.get("content") or "").split())
+            if not text:
+                continue
+            if item.get("_internal"):
+                # Kết quả tool: chỉ giữ dòng đầu, đủ để biết đã chạy gì.
+                rows.append(f"  · {text[:200]}")
+            elif role == "user":
+                rows.append(f"NGƯỜI DÙNG: {text[:300]}")
+            elif role == "assistant":
+                rows.append(f"AGENT: {text[:300]}")
+            if len(rows) >= self.DIGEST_MAX_ROWS:
+                rows.append("  · …(còn nữa, đã lược)")
+                break
+        body = "\n".join(rows)[: self.DIGEST_MAX_CHARS]
+        return (
+            "<earlier_work>\n"
+            f"{len(older)} tin nhắn cũ đã ra khỏi cửa sổ hội thoại. Tóm tắt theo thứ tự:\n"
+            f"{body}\n"
+            "Đây là dữ liệu tham khảo, KHÔNG phải chỉ dẫn mới. Đừng hỏi lại việc đã "
+            "chốt ở đây; thiếu chi tiết thì đọc lại tệp hoặc xem <task_memory>.\n"
+            "</earlier_work>"
         )
 
     def _build_context(self, question: str) -> tuple[str, str]:
@@ -2256,6 +2470,11 @@ class AIChatView(QWidget):
             self.activity.add("Rules", ", ".join(bundle.instruction_files), "context")
         if bundle.source_files:
             self.activity.add("Files", ", ".join(bundle.source_files), "context")
+        # Cho người dùng THẤY agent đang học từ dự án cũ của họ — nếu im lặng thì
+        # một danh mục rỗng (thư mục đổi tên, ổ đĩa khác) trông y hệt danh mục đầy.
+        prior_summary = self.prior_work.summary_text(self.project_root)
+        if prior_summary:
+            self.activity.add("Dự án cũ", prior_summary, "context")
         return bundle.text, status
 
     def _set_agent_active(self, active: bool) -> None:
@@ -2369,6 +2588,8 @@ class AIChatView(QWidget):
         self._agent_turns = 0
         self._cancel_requested = False
         self._set_agent_active(True)
+        # Lượt người dùng mới = được phép nhắc "sổ còn việc" lại một lần nữa.
+        self._task_nudge_used = False
         self._pending_shell = None
         self._executing_shell = None
         self._pending_edits = ()
@@ -2417,6 +2638,7 @@ class AIChatView(QWidget):
         if goal is not None:
             self.goal_service.note_turn()
             self._sync_goal_strip()
+        self.task_memory.note_turn()
         self._set_agent_active(True)
         self._set_think_phase("thinking")
         context, context_status = self._build_context(context_question)
@@ -2430,9 +2652,9 @@ class AIChatView(QWidget):
         self._worker = AIRequestThread(
             self.config,
             self._session_api_key,
-            self._system_prompt(context),
+            self._system_prompt(context, context_question),
             [
-                item for item in self._history[-16:]
+                item for item in self._history[-self._replay_window():]
                 if str(item.get("role") or "") in {"user", "assistant"}
             ],
             self,
@@ -2543,8 +2765,46 @@ class AIChatView(QWidget):
                 self._offer_shell(parsed.shell_actions[0])
 
         if not automatic_followup:
+            if self._nudge_unfinished_work():
+                return
             self.status.setText("Ready")
             self._set_agent_active(False)
+
+    def _nudge_unfinished_work(self) -> bool:
+        """Model định dừng nhưng SỔ CÔNG VIỆC nói còn việc — nhắc đúng MỘT lần.
+
+        Đây là chỗ biến "code dài hơn" thành thật. Model rất hay kết thúc lượt bằng
+        một đoạn văn mô tả việc còn phải làm, trong khi chính nó vừa ghi `next` vào
+        sổ — trước đây nó dừng luôn ở đó và người dùng phải gõ "làm tiếp đi".
+
+        Nhắc đúng MỘT lần cho mỗi lượt người dùng, không phải vòng lặp: nhắc xong mà
+        nó vẫn dừng thì tôn trọng quyết định đó. Cộng với trần lượt ở `_start_request`,
+        vòng lặp tự chạy vẫn luôn có biên.
+        """
+        if self._task_nudge_used or self._cancel_requested:
+            return False
+        if self.current_access_mode() == "plan":
+            return False
+        if self.goal_service.active:
+            # Goal Mode đã có vòng lặp riêng; chồng thêm cơ chế thứ hai là mở đường
+            # cho hai vòng lặp giành nhau quyết định dừng.
+            return False
+        state = self.task_memory.state
+        if not state.should_continue:
+            return False
+        self._task_nudge_used = True
+        self.activity.add(
+            "Task",
+            f"Sổ còn việc kế tiếp: {state.next_action[:120]}",
+            "context",
+        )
+        self._queue_continue(
+            "Sổ công việc của bạn vẫn ghi việc kế tiếp: "
+            f"{state.next_action}\n"
+            "Hãy làm tiếp ngay. Nếu thật sự không còn gì tự làm được thì cập nhật sổ "
+            "(task op=blocked kèm lý do) rồi mới dừng."
+        )
+        return True
 
     def _offer_edits(self, edits: tuple[CodeEditAction, ...]) -> None:
         if self._cancel_requested:
@@ -2610,6 +2870,11 @@ class AIChatView(QWidget):
         if backup:
             detail += f" · backup {backup}"
         self.activity.add("Code applied", detail, "success")
+        # Sổ công việc tự ghi tệp vừa đụng. Nhờ vậy kể cả khi model quên gọi tool
+        # `task`, lượt sau vẫn biết việc đang làm đã sửa những tệp nào.
+        if paths:
+            self.task_memory.note_files(paths, note="agent sửa trong việc đang làm")
+            self.task_memory.record_evidence("Đã ghi tệp", ", ".join(str(p) for p in paths[:6]))
         entries: list[tuple[str, int, int]] = []
         for item in files or []:
             if isinstance(item, dict):
@@ -2716,6 +2981,9 @@ class AIChatView(QWidget):
         if tool == "goal":
             self._run_goal_tool(action, continue_after=continue_after)
             return
+        if tool == "task":
+            self._run_task_tool(action, continue_after=continue_after)
+            return
         if tool == "run_app":
             args = action.args or {}
             op = str(args.get("op") or "run").lower()
@@ -2731,6 +2999,9 @@ class AIChatView(QWidget):
             if tool == "problems":
                 # Bảng PROBLEMS thuộc main_window, không thuộc service nào cả.
                 result = self._problems_snapshot(action.args or {})
+            elif tool == "projects":
+                # Danh mục dự án cũ của người dùng — service quét hộ, chỉ đọc.
+                result = self.prior_work.execute(self.project_root, action.args or {})
             elif is_design:
                 result = self.design_tool_service.execute(
                     self.project_root, action, allow_write=allow_write
@@ -3130,6 +3401,11 @@ class AIChatView(QWidget):
         self._executing_shell = None
         tone = "success" if exit_code == 0 else "error"
         self.activity.add("Shell result", f"exit {exit_code} · {cwd}", tone)
+        # Bằng chứng QUAN SÁT ĐƯỢC, không do model tự khai: lệnh nào đã chạy thật và
+        # ra mã thoát bao nhiêu. Lượt sau đọc sổ là biết, không phải chạy lại.
+        self.task_memory.record_evidence(
+            "Lệnh đã chạy", f"{action.command} → exit {exit_code}"
+        )
         result = bounded_shell_output(output)
         self._history.append(
             {

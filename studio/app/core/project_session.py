@@ -24,6 +24,7 @@ PROJECT_TEMPLATES = {
     "ninja-runner": "NinjaRunner",
     "catbox-mre": "CatBoxMRE",
     "keypad-demo": "keypad-demo",
+    "popart-city-3d": "PopArtCity3D",
 }
 
 @dataclass(slots=True)

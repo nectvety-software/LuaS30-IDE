@@ -154,6 +154,10 @@ end
 - [ ] Di chuyển chấp nhận cả D-Pad lẫn phím số dự phòng.
 - [ ] Không có handler chuột/touch.
 - [ ] Chạy được trên emulator với bàn phím thật của `VXPEmu` / `PhoneKeypad`.
+- [ ] Hành động một lần (`ok`, softkey, `clear`, `#`) chặn bằng cờ `fresh` — runtime
+      có thể gửi lại `keypressed` khi giữ phím.
+- [ ] Không dựa vào `#` để làm việc bắt buộc phải có: **`#` không bấm được trong
+      emulator** (xem §6).
 
 ## 5. Mẫu chạy được trong repo
 
@@ -167,9 +171,61 @@ end
 
 Chép `src/keypad.lua` sang project khác là có ngay phần keypad đúng chuẩn.
 
+⚠️ Điểm vào **phải là `main.lua` ở gốc dự án** (`runtime_lua.c` gọi
+`load_first("main.lub","main.lua","main",1)`); module thì để trong `src/` và
+`require("src.keypad")`. Đặt `main.lua` trong `src/` sẽ ra màn hình
+**"main.lua missing"** — build vẫn xanh, lỗi chỉ hiện lúc chạy.
+
 Kiểm chứng không cần máy thật (Lua 5.1, build từ `vendor/lua-5.1.5`):
 
 ```bash
 py -3.12 tools/validate_project_templates_e2e.py   # tạo dự án thật từ template rồi chạy harness
 python tools/validate_keypad_skill.py              # tài liệu + code template khớp hợp đồng
+```
+
+## 6. Bấm phím trong emulator (VXPEmu) — cơ chế thật
+
+Vỏ máy Nokia 225 trong Studio (`studio/app/widgets/vxp_emu_window.py`) nhúng
+`VXPEmu.exe` thật rồi bơm phím qua `WM_KEYDOWN`/`WM_KEYUP`
+(`studio/app/core/native_window.py`). Chuỗi truyền có **ba bảng phải khớp**, lệch
+một bảng thì phím im lặng đi sai:
+
+| Chặng | Bảng | Nguồn chân lý |
+|---|---|---|
+| IDE → Windows | `_MRE_TO_VK` | `KeyboardMapping::loadDefaults` (Qt key mà VXPEmu tra) |
+| Qt → MRE | `MreKey` | `VXPEmu/src/emulator/InputManager.h` |
+| MRE → Lua | tên chữ thường | §0 tài liệu này |
+
+**Phím phải GIỮ được**, không chỉ bấm nhả: `PhoneKeypad` phát `key_pressed` /
+`key_released` riêng, `send_key_down`/`send_key_up` ghép cặp. Bấm nhả tức thời
+(down+up liền) thì app không bao giờ thấy trạng thái đang giữ, và bảng `held`
+trong `keypad.lua` vô nghĩa.
+
+⚠️ **`#` KHÔNG gửi được vào VXPEmu** (`native_window.MRE_KEYS_NOT_INJECTABLE`).
+Qt chỉ ra `Qt::Key_NumberSign` khi `GetKeyboardState()` thấy Shift đang giữ; gửi
+`VK_SHIFT` thay thế thì **cũng không được** vì `Qt::Key_Shift` nằm trong bảng phím
+của VXPEmu nên bị hiểu thành một cú bấm `softright` giả. Đã đo 5 cách
+(Shift giả qua `PostMessageW`, `AttachThreadInput`+`SetKeyboardState`, `VK_PACKET`,
+`WM_CHAR`, quét 35 virtual-key OEM/numpad): cách duy nhất chạy được là
+`AttachThreadInput` + `SendInput` Shift thật + gửi đồng bộ, nhưng chỉ ăn ~6/7 lần,
+lần còn lại app nhận `3` — **sai phím mà không báo gì**, nên đã bỏ hẳn. Nút `#`
+vẫn có trên vỏ máy (điện thoại thật có phím này) và tooltip nói rõ chỉ chạy trên
+máy thật. Muốn `#` chạy được thì phải sửa VXPEmu: cho nó một đường bơm thẳng mã
+MRE (`dispatchKeyPress`) qua message riêng, khỏi đi vòng qua Qt.
+
+⚠️ **`print()` của Lua không hiện ở đâu cả khi chạy VXPEmu.** Runtime gọi
+`ls30_log_info` → `ls30_fw.log_info` → `_vm_log_info`, nhưng VXPEmu chỉ export
+`vm_app_log` (`grep -a _vm_log_info emulator/VXPEmu.exe` → không có), nên lời gọi
+là no-op im lặng. Muốn quan sát trạng thái trong emulator thì **vẽ lên màn hình**.
+
+Kiểm chứng:
+
+```bash
+# tĩnh + widget offscreen: bảng phím, tooltip, hành vi giữ/nhả, nhả khi mất focus
+QT_QPA_PLATFORM=offscreen QT_QPA_FONTDIR="C:/Windows/Fonts" \
+  py -3.12 tools/validate_keypad_emulation.py
+
+# E2E thật: build dự án dò, mở VXPEmu, nhúng, bơm phím, đọc framebuffer
+# (SKIP nếu thiếu VXPEmu / toolchain ARM / MRE SDK; cần màn hình thật)
+py -3.12 tools/validate_keypad_emulation_e2e.py
 ```

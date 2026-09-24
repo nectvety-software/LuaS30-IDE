@@ -134,7 +134,10 @@ QPushButton {
     color: @TEXT_2;
 }
 QPushButton:hover { background: @BORDER_STRONG; color: @TEXT; }
-QPushButton#PhoneKey { padding: 0 4px; min-height: 0; }
+/* Nút tự vẽ của vỏ máy giả lập (vxp_emu_window.py): QSS không tô gì cả, nhưng
+   vẫn phải gỡ `min-height`/`padding` để kích thước cố định của nút không bị
+   sizeHint của stylesheet kéo giãn. */
+QPushButton#PhoneKey, QPushButton#PhoneRailButton { padding: 0; min-height: 0; }
 QPushButton#PrimaryButton { background: @ACCENT; border-color: @ACCENT; color: @ON_ACCENT; }
 QPushButton#PrimaryButton:hover { background: @ACCENT_HOVER; }
 QPushButton#SuccessButton { background: @GREEN; border-color: @GREEN; color: @ON_ACCENT; }

@@ -1818,6 +1818,11 @@ class VxpMainWindow(QWidget):
         self.vxpemu_panel.process_started(artifact, pid)
         self.bottom.setCurrentWidget(self.vxpemu_panel)
         self._set_console_visible(True)
+        # Tác vụ Run chưa xong khi VXPEmu mở: chip phải nói đúng việc đang diễn ra,
+        # nếu không nó vẫn trông như "đang biên dịch" suốt phiên giả lập.
+        if self.task_progress.isVisible():
+            self.task_progress.set_phase("Đang chạy giả lập")
+            self.task_progress.set_cancel_hint("Đóng thông báo tác vụ (VXPEmu vẫn chạy)")
         if pid and os.name == "nt":
             manifest = self.runner.last_manifest or {}
             loaded = str(manifest.get("emulated_vxp") or artifact)
@@ -1835,6 +1840,18 @@ class VxpMainWindow(QWidget):
         self.vxpemu_panel.process_stopped(code)
         if self._vxp_emu_window is not None and self._vxp_emu_window.running:
             self._vxp_emu_window.process_stopped(code)
+        # Tác vụ Run = build + phiên giả lập. Build xong thì LuaRunner KHÔNG phát
+        # `finished` nữa (nó `return` sớm để mở VXPEmu), nên đây là chỗ duy nhất
+        # chốt được chip; thiếu bước này chip kẹt vĩnh viễn và nút X thành nút chết.
+        if not self.runner.is_running:
+            if code == 0:
+                # Người dùng tắt giả lập ⇒ thông báo tác vụ phải TẮT theo ngay.
+                # Trước đây chip nán lại 5 giây "Đã dừng giả lập" trên header,
+                # che vùng làm việc sau khi phiên giả lập đã kết thúc.
+                self.task_progress.dismiss()
+            else:
+                # Lỗi khởi động thì PHẢI hiện: ẩn đi là giấu mất sự cố.
+                self.task_progress.finish(False, "Giả lập lỗi")
         # Giả lập chết/trước khi kịp chụp: báo thất bại nếu chưa báo.
         if self._ai_run_active and not self._ai_run_reported:
             self._report_ai_run(False, "Giả lập dừng trước khi kịp chụp ảnh kiểm tra.")

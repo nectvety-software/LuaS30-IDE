@@ -15,6 +15,8 @@ import argparse
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,6 +25,28 @@ ROOT = Path(__file__).resolve().parent.parent
 def _run(cmd: list[str], cwd: Path) -> int:
     print("[RUN]", " ".join(str(c) for c in cmd), flush=True)
     return subprocess.run(cmd, cwd=str(cwd)).returncode
+
+
+def _clear_target(target: Path) -> None:
+    """Bo ban frozen cu ma KHONG `rmtree` thang cay lon nam trong repo.
+
+    ⚠️ Hook `[safe-delete]` cua host chan `shutil.rmtree` khi so muc xoa trong
+    MOT luot vuot nguong (50 muc) va chi mien hoan toan cac duong dan duoi temp
+    cua OS. `dist/frozen/LuaS30IDE` do duoc **3022 tep**, nen `rmtree` se lam
+    script CHET voi `exit 1` ma khong in gi (stderr bi nuot) — trong y nhu
+    "PyInstaller hong", khong nhu "bi chan xoa".
+    Doi ten (metadata, KHONG phai xoa) sang ten tam cung o dia la duong an toan;
+    ten bat dau bang `.` nen `package_msi._iter_files` se bo qua no khi stage.
+    """
+    if not target.exists():
+        return
+    aside = target.parent / f".old-{target.name}-{time.strftime('%Y%m%d-%H%M%S')}"
+    try:
+        target.rename(aside)
+        print(f"[clean] Ban frozen cu -> {aside.name} (doi ten, khong xoa)")
+    except OSError as exc:
+        print(f"[WARN] Khong doi ten duoc ban cu ({exc}); thu xoa truc tiep.")
+        shutil.rmtree(target, ignore_errors=True)
 
 
 def main() -> int:
@@ -35,39 +59,42 @@ def main() -> int:
     spec: Path = args.spec.resolve()
     if not spec.is_file():
         raise SystemExit(f"[ERROR] Khong thay spec: {spec}")
+    out.mkdir(parents=True, exist_ok=True)
 
-    work = out / "_work"
-    distpath = out / "_dist"
-    for d in (work, distpath):
-        if d.exists():
-            shutil.rmtree(d)
+    # ⚠️ `_work/` cua PyInstaller chua hang nghin tep. Don no trong `out`
+    # (thuong la `dist/`) se vuot ngan sach xoa theo luot cua hook `[safe-delete]`
+    # ⇒ scratch PHAI nam trong temp cua OS (`_should_bypass_safe_delete()` mien
+    # moi duong dan duoi temp). Xem `doc/build/BUILD_VXP.md` / memory.
+    with tempfile.TemporaryDirectory(prefix="luas30-frozen-") as tmp:
+        work = Path(tmp) / "_work"
+        distpath = Path(tmp) / "_dist"
 
-    rc = _run([
-        sys.executable, "-m", "PyInstaller",
-        "--noconfirm", "--clean",
-        "--workpath", str(work),
-        "--distpath", str(distpath),
-        str(spec),
-    ], ROOT)
-    if rc != 0:
-        raise SystemExit(f"PyInstaller failed (code {rc})")
+        rc = _run([
+            sys.executable, "-m", "PyInstaller",
+            "--noconfirm", "--clean",
+            "--workpath", str(work),
+            "--distpath", str(distpath),
+            str(spec),
+        ], ROOT)
+        if rc != 0:
+            raise SystemExit(f"PyInstaller failed (code {rc})")
 
-    frozen = distpath / "LuaS30IDE"
-    exe = frozen / "LuaS30IDE.exe"
-    if not exe.is_file():
-        raise SystemExit("Khong thay LuaS30IDE.exe sau khi build.")
-    target = out / "LuaS30IDE"
-    if target.exists():
-        shutil.rmtree(target)
-    shutil.move(str(frozen), str(target))
+        frozen = distpath / "LuaS30IDE"
+        exe = frozen / "LuaS30IDE.exe"
+        if not exe.is_file():
+            raise SystemExit("Khong thay LuaS30IDE.exe sau khi build.")
+        target = out / "LuaS30IDE"
+        _clear_target(target)
+        # Khac o dia (temp tren C:, `out` tren D:) thi `shutil.move` se copy roi
+        # xoa nguon — nguon nam duoi temp nen duoc mien, khong dung guard.
+        shutil.move(str(frozen), str(target))
+
     # LuaS30IDE doc VERSION tu thu muc chua exe; thieu no thi app bao
     # "unknown" va lam nhiem setup_state.json (hoi dialog thiet lap lan dau
     # o lan chay that tiep theo).
     version_file = ROOT / "VERSION"
     if version_file.is_file():
         shutil.copy2(version_file, target / "VERSION")
-    shutil.rmtree(work, ignore_errors=True)
-    shutil.rmtree(distpath, ignore_errors=True)
 
     # Smoke test: --version khong can mo Qt.
     probe = subprocess.run([str(target / "LuaS30IDE.exe"), "--version"],

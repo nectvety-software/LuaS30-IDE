@@ -22,6 +22,7 @@ class BottomTaskProgress(QFrame):
         self.setObjectName("BottomTaskProgress")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._base_title = ""
+        self._active = False
         self._drag_active = False
         self._drag_offset = QPoint()
         self._host_widget: QWidget | None = None
@@ -64,7 +65,7 @@ class BottomTaskProgress(QFrame):
         self.cancel_button.setIcon(icon("fa5s.times"))
         self.cancel_button.setToolTip("Dừng tác vụ")
         self.cancel_button.setFixedSize(24, 24)
-        self.cancel_button.clicked.connect(self.cancel_requested.emit)
+        self.cancel_button.clicked.connect(self._on_cancel_clicked)
         layout.addWidget(self.cancel_button)
 
         self.setFixedHeight(32)
@@ -90,12 +91,14 @@ class BottomTaskProgress(QFrame):
 
     def begin(self, title: str) -> None:
         self._hide_timer.stop()
+        self._active = True
         self._base_title = title.strip() or "Run / Build"
         self.title_label.setText(self._base_title)
         self.title_label.setToolTip(self._base_title)
         self.state_icon.setPixmap(icon("fa5s.circle-notch", "#64A7FF").pixmap(12, 12))
         self.progress.setRange(0, 0)
         self.cancel_button.setEnabled(True)
+        self.cancel_button.setToolTip("Dừng tác vụ")
         self.open_button.setEnabled(True)
         self.adjustSize()
         if self._host_widget is not None and not self.isVisible():
@@ -113,9 +116,13 @@ class BottomTaskProgress(QFrame):
         self.title_label.setToolTip(text)
 
     def finish(self, success: bool, message: str = "") -> None:
+        self._active = False
         self.progress.setRange(0, 1)
         self.progress.setValue(1)
-        self.cancel_button.setEnabled(False)
+        # Vẫn giữ nút X bấm được: tác vụ đã xong thì X là "đóng", người dùng không
+        # phải chờ hết hẹn giờ tự ẩn.
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.setToolTip("Đóng thông báo tác vụ")
         if success:
             self.state_icon.setPixmap(icon("fa5s.check-circle", "#56C990").pixmap(12, 12))
             suffix = message or "Hoàn tất"
@@ -126,6 +133,35 @@ class BottomTaskProgress(QFrame):
         self.title_label.setText(text)
         self.title_label.setToolTip(text)
         self._hide_timer.start(5000 if success else 10000)
+
+    def is_active(self) -> bool:
+        """True khi tác vụ còn đang chạy (từ ``begin`` tới ``finish``)."""
+        return self._active
+
+    def set_cancel_hint(self, hint: str) -> None:
+        """Đổi nhãn nút X cho khớp việc X thật sự làm được ở giai đoạn hiện tại.
+
+        Nút X **luôn** đóng được chip; nhưng khi build đã xong (VXPEmu đang chạy)
+        nó không huỷ được gì nữa, nên nhãn "Dừng tác vụ" sẽ nói sai.
+        """
+        self.cancel_button.setToolTip(hint)
+
+    def _on_cancel_clicked(self) -> None:
+        """Nút X **luôn** đóng được chip.
+
+        Trước đây X chỉ phát ``cancel_requested``: khi tác vụ đã xong, hoặc khi
+        không còn gì để huỷ (build xong, VXPEmu đang chạy), tín hiệu đó rơi vào
+        khoảng không nên chip kẹt lại vĩnh viễn và X thành nút chết.
+        """
+        if self._active:
+            self.cancel_requested.emit()
+        self.dismiss()
+
+    def dismiss(self) -> None:
+        """Ẩn chip ngay, bất kể tác vụ đang ở trạng thái nào."""
+        self._hide_timer.stop()
+        self._active = False
+        self.hide()
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt API
         if event.button() == Qt.MouseButton.LeftButton:

@@ -59,7 +59,8 @@ ALLOWLIST: dict[str, str] = {
     "app/services/ai_agent_protocol.py":
         "ví dụ JSON gửi cho model — màu NỘI DUNG game (khớp lua_export.ACCENT), không phải chrome",
     "app/widgets/vxp_emu_window.py":
-        "bezel + màn Nokia 225 của cửa sổ giả lập — ART THIẾT BỊ, không phải chrome IDE",
+        "vỏ Nokia 225 của cửa sổ giả lập (thân/chip/màn hình chờ/bàn phím) — "
+        "ART THIẾT BỊ lấy mẫu từ mockup classic dark, không phải chrome IDE",
 }
 
 # Chrome VXPEngine (studio/app/vxpui) đã ĐỒNG BỘ theo bảng màu UAGet Desktop
@@ -697,7 +698,13 @@ def main() -> int:
         render(Path(args.shots).resolve() if args.shots else None)
 
     print("\n== KẾT QUẢ ==", flush=True)
-    print("FAIL:", FAILS or "không có", flush=True)
+    # Đừng in "FAIL: không có" khi mọi thứ đạt — đọc log sẽ tưởng hỏng.
+    if FAILS:
+        print(f"FAIL: {len(FAILS)} mục", flush=True)
+        for item in FAILS:
+            print("  -", item, flush=True)
+    else:
+        print("PASS: không có lỗi", flush=True)
     return 1 if FAILS else 0
 
 

@@ -234,14 +234,46 @@ DESIGN_TOOL_NAMES = ("ui_design", "asset")
 # "run_app": build project + chạy thử game/app trên VXPEmu screen-only + chụp
 # ảnh khói; handler bất đồng bộ cũng nằm ở AIChatView (kết quả về qua callback).
 # "goal": cập nhật kế hoạch/trạng thái của Goal Mode (`.luas30/ai_goal.json`).
+# "task": bộ nhớ CÔNG VIỆC ĐANG LÀM (`<project>/.luas30/ai_task.json`) — khác Goal
+# Mode ở chỗ nó luôn bật, không cần `/goal`, và tồn tại qua cả phiên chat mới.
+# "projects": danh mục các dự án LuaS30 KHÁC của người dùng (quét từ
+# `projects_root()`) — agent không tự đọc được vì bị khoá trong project đang mở,
+# nên IDE quét hộ; tool này để tra chi tiết một dự án khi cần gợi ý.
 # Phải nằm trong TOOL_NAMES kể cả khi chưa bật Goal Mode: parser lọc theo danh
 # sách này, thêm tool mà quên ở đây thì khối tool bị bỏ IM LẶNG (0 action, không
 # lỗi) — đúng lỗi đã từng dính với các tool trước.
-WORKBENCH_TOOL_NAMES = ("skill", "problems", "run_app", "goal")
+WORKBENCH_TOOL_NAMES = ("skill", "problems", "run_app", "goal", "task", "projects")
 TOOL_NAMES = READONLY_TOOL_NAMES + DESIGN_TOOL_NAMES + WORKBENCH_TOOL_NAMES
 
 # Ops hợp lệ của tool `goal` — nguồn duy nhất, dùng cho cả handler lẫn prompt.
 GOAL_OPS = ("status", "plan", "start", "done", "fail", "blocked", "finish")
+
+# Ops hợp lệ của tool `task` — nguồn DUY NHẤT, và khác GOAL_OPS ở một điểm quan
+# trọng: `ai_task_memory.TaskMemory` **import lại đúng tuple này** cho handler,
+# nên prompt và handler không thể lệch nhau. (GOAL_OPS chỉ được canh bằng
+# validator; ở đây chặn hẳn bằng import.)
+TASK_OPS = (
+    "status",     # đọc lại trạng thái hiện tại
+    "objective",  # args.text — đang làm gì, cho ai, xong khi nào
+    "plan",       # args.steps — chia việc thành bước kiểm chứng được
+    "step",       # args.step (+ args.state) — đánh dấu bước todo/doing/done/failed
+    "fact",       # args.text — phát hiện/QUYẾT ĐỊNH bền vững, để không hỏi lại
+    "file",       # args.path (+ args.note) — tệp đã đụng và vì sao
+    "next",       # args.text — việc kế tiếp; rỗng = không còn gì để tự làm
+    "blocked",    # args.reason — cần người dùng quyết
+    "unblock",    # args.note — đã gỡ được chỗ tắc
+    "done",       # args.verify — xong thật, kèm bằng chứng
+    "reset",      # args.reason — xoá bộ nhớ, bắt đầu việc mới
+)
+
+# Ops hợp lệ của tool `projects` — nguồn DUY NHẤT. `prior_work_service.PriorWorkService`
+# **import lại đúng tuple này** cho handler, nên prompt và handler không thể lệch
+# nhau (cùng cách chặn với TASK_OPS).
+PROJECT_OPS = (
+    "list",    # toàn bộ danh mục, một dòng mỗi dự án
+    "show",    # args.name — chi tiết một dự án (mô-đun, màn hình, bằng chứng)
+    "styles",  # chỉ phần tổng hợp: gu phong cách + genre + thông số chung
+)
 
 # Agent KHÔNG còn quyền đọc mã nguồn của chính LuaS30 IDE (đã bỏ scope="engine").
 # Model cũ vẫn có thể phát `{"tool":"engine","args":{"op":...}}`; lời gọi đó được
@@ -781,6 +813,8 @@ def agent_protocol_prompt(
     plan_mode: bool = False,
     full_access: bool = False,
     goal_mode: bool = False,
+    task_memory: bool = True,
+    prior_work: bool = True,
 ) -> str:
     if plan_mode:
         shell = "Plan mode is active. Do not emit luas30-shell blocks."
@@ -887,6 +921,63 @@ def agent_protocol_prompt(
         "step is still open or failed. Prefer several small verified steps over one "
         "large unverified claim."
     )
+    task_note = (
+        "WORKING MEMORY (task tool). A persistent per-project work log is kept at "
+        ".luas30/ai_task.json and its current content is included in your system prompt "
+        "as <task_memory> on EVERY turn — including the first turn of a brand new chat. "
+        "It is how you know what you were in the middle of after the app restarts, after "
+        "the context window rolls over, or when the user opens a new session. Treat it "
+        "as your own notes, and keep it TRUE: a wrong note is worse than no note.\n"
+        "Write to it with the task tool, one block per update:\n"
+        "```luas30-tool\n"
+        '{"tool":"task","args":{"op":"objective","text":"Add a shop screen to the farm '
+        'game; done when /run shows it and problems is clean"},"reason":"Record the objective"}\n'
+        "```\n"
+        "ops: objective (args.text — what we are doing and what 'done' means), "
+        "plan (args.steps — 3-12 short verifiable steps), step (args.step + args.state "
+        "in todo|doing|done|failed), fact (args.text — a durable finding or a DECISION "
+        "you made, with the reason), file (args.path + args.note — a file you touched and "
+        "why), next (args.text — the single next action; empty string means nothing left "
+        "for you to do), blocked (args.reason — you need the user), unblock (args.note), "
+        "done (args.verify — finished, with the evidence that proves it), "
+        "status (read the log back), reset (args.reason — start a different job).\n"
+        "Rules: when you start multi-step work, call objective and plan BEFORE the first "
+        "edit. Record a fact when you learn something expensive to re-derive, or when you "
+        "choose between two approaches — say which and why. Record a file when you change "
+        "it. Set next whenever the work is unfinished, so a future turn (or a future you) "
+        "can resume without re-reading everything. Clear next and call done only when the "
+        "objective is genuinely met. Do NOT use this tool to narrate every small step — "
+        "the activity feed already shows your actions; write only what is worth "
+        "remembering. Writing the log is not a code edit and is allowed in every mode."
+    )
+    suggest_note = (
+        "SUGGESTIONS (proactive). Your context contains a <prior_work> catalogue of "
+        "the user's OTHER LuaS30 projects (the IDE scanned them for you — you cannot "
+        "read those folders yourself, they are outside the open project). Use it as "
+        "evidence, not decoration.\n"
+        "When the user is deciding what to build — asks for ideas, says they are bored "
+        "or out of inspiration, gives a vague one-liner like 'make me a game', or opens "
+        "an empty/new project — do NOT answer with a generic list. Instead:\n"
+        "1. Read the repeated styles and genres in <prior_work> and say what you "
+        "observed (e.g. 'you keep coming back to notebook-doodle art').\n"
+        "2. Offer 2-3 CONCRETE options, each one line: genre + art style + the core "
+        "loop in a sentence + which of their own projects it is closest to.\n"
+        "3. Respect the target: 240x320, 15 FPS, keypad only (no touch, no mouse), "
+        "Lua 5.1, small heap. Never propose something that needs a pointer, a large "
+        "bitmap atlas, or per-frame table churn.\n"
+        "4. End by asking which one to start, then act on the answer.\n"
+        "Pull detail for a specific project with the projects tool:\n"
+        "```luas30-tool\n"
+        '{"tool":"projects","args":{"op":"show","name":"BusJam"},'
+        '"reason":"Look at how a similar project was structured"}\n'
+        "```\n"
+        "ops: list (whole catalogue), show (args.name), styles (aggregate taste only). "
+        "Never invent a project that is not in the catalogue, and never present a "
+        "suggestion as something the user already asked for. When a suggestion turns "
+        "into real work, follow the game-idea-suggest skill if it is listed.\n"
+        "Outside of 'what should I build' moments, do not push ideas unprompted — "
+        "answer the question that was actually asked."
+    )
     readonly_tools = (
         "Read-only codebase tools are available and may be used in any access mode. "
         "You may emit SEVERAL luas30-tool blocks in one answer — they run sequentially "
@@ -899,6 +990,8 @@ def agent_protocol_prompt(
         "```\n"
         "Use project-relative paths and never request secrets or .env files.\n"
         + project_scope_note + "\n" + skills_note + (("\n" + goal_note) if goal_mode else "")
+        + (("\n" + task_note) if task_memory else "")
+        + (("\n" + suggest_note) if prior_work else "")
     )
     design_tools = (
         "UI Design and Assets tools let you read this project's interface design and asset "
@@ -954,6 +1047,13 @@ def agent_protocol_prompt(
             "and no next action — either take the next action or call blocked with the "
             "decision you need."
             if goal_mode
+            else ""
+        )
+        + (
+            "\nWorking memory: if the job is unfinished when you end this turn, the task log "
+            "must say where you got to and what the next action is — otherwise the next turn "
+            "starts blind. If it IS finished, say so with the evidence."
+            if task_memory and not goal_mode
             else ""
         )
     )

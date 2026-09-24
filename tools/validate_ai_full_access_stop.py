@@ -15,11 +15,19 @@ for token in (
     'self._pending_continue_question = None',
     'self.reject_changes_requested.emit()',
     'self._shell_stopper()',
-    '_max_full_access_turns = 32',
     'if policy == "full":',
     'full_auto = auto and self._shell_policy() == "full"',
 ):
     assert token in chat, token
+
+# Full Access được nới rộng hơn nhưng KHÔNG được mất biên. Ghim con số cũ (32) thì
+# mỗi lần chỉnh ngân sách hợp lý là guard đỏ oan; canh bất biến mới là việc thật.
+import re as _re
+
+_limit_full = _re.search(r'self\._max_full_access_turns\s*=\s*(\d+)', chat)
+assert _limit_full, 'self._max_full_access_turns = <số>'
+assert int(_limit_full.group(1)) >= 1, 'Full Access phải chạy được ít nhất 1 lượt'
+assert int(_limit_full.group(1)) < 10_000, 'trần Full Access bị bỏ hẳn — vòng lặp vô hạn'
 
 for token in (
     'self.ai_chat.set_shell_stopper(self._stop_ai_shell)',

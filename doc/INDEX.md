@@ -88,6 +88,12 @@ doc/
 - [`ai/README.md`](ai/README.md) — AI Agent entry point; read this first.
 - [`ai/SKILL.md`](ai/SKILL.md) — binding repository workflow and engineering rules.
 - [`ai/PROMPT.md`](ai/PROMPT.md) — master implementation contract.
+- [`ai/Keypad.md`](ai/Keypad.md) — physical keypad → Lua key contract.
+- [`ai/MEMORY_PROMPT.md`](ai/MEMORY_PROMPT.md) + [`ai/MEMORY_SKILLS.md`](ai/MEMORY_SKILLS.md) — anti-OOM contract and techniques.
+- [`ai/RETRO_GO_PROMPT.md`](ai/RETRO_GO_PROMPT.md) — **Retro-Go style launcher** implementation contract.
+- [`ai/RETRO_GO_SKILL.md`](ai/RETRO_GO_SKILL.md) — Retro-Go UI tokens, chrome, input map, checklist.
+- [`ai/CACHE_PROMPT.md`](ai/CACHE_PROMPT.md) — **Files in cache / `@App` data dir** for every project.
+- [`ai/CACHE_SKILL.md`](ai/CACHE_SKILL.md) — cache file slots, `Cache.*` wrapper, host `E__@` paths.
 
 ## Pháp lý / Credits
 
