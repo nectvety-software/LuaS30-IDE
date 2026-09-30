@@ -77,8 +77,11 @@ python vpe_tool.py png FILE --out preview.png --scale 4
 - `inspect`: số file + dims khớp kỳ vọng, không dòng ERROR; `.vpea` có
   `len == 20 + n*(16+w*h*2)`.
 - Atlas PNG trên đĩa đúng WxH JSON báo; frame count = file count.
-- Round-trip: decode một frame rồi encode lại VPE565 — byte-identical file gốc.
+- Trung thực điểm ảnh: decode từng frame `.vpe`/`.vpea` (RGB565) rồi so với vùng
+  tương ứng trên atlas PNG (RGB8→565) — mọi kênh 5/6/5 lệch ≤ 1 bước làm tròn.
+  (Atlas đi qua PNG nên KHÔNG kỳ vọng byte-identical; chỉ file `.vpe` tái encode
+  trực tiếp mới byte-identical với gốc.)
 - Nhìn thật atlas/PNG trên nền tối trước khi kết luận đúng.
-- Trong engine: 1 sprite native scale + 1 tilemap + (nếu có) animation
-  `.vpea` chạy vòng. Build VXP (`tools/build.py`) PASS rồi smoke trên
-  emulator.
+- Trong engine: 1 sprite native scale + 1 tilemap + (nếu có) animation `.vpea`
+  chạy theo `delay_ms` (lặp khi `loop=1`, phát một lần rồi dừng khi `loop=0`).
+  Build VXP (`tools/build.py`) PASS rồi smoke trên emulator.
