@@ -22,6 +22,7 @@ typedef struct cm_image {
 static ls30_u8 *g_buf = 0;
 static int g_w = 240, g_h = 320;
 static int g_layer = -1;
+static lua_State *g_L = 0;
 static cm_image g_images[LS30_IMAGE_CACHE_MAX];
 static int g_image_count = 0;
 static ls30_u8 *g_audio_data = 0;
@@ -30,6 +31,22 @@ static int g_audio_size = 0;
 void luas30_bridge_set_frame(ls30_u8 *buf, int w, int h, int layer)
 {
     g_buf = buf; g_w = w; g_h = h; g_layer = layer;
+}
+
+/* conf.lua co the thu nho vung ve sau khi bridge da mo (W/H da day vao
+   engine). Dong bo lai bounds cat + engine.W/H cho dung kich thuoc that. */
+void luas30_bridge_set_size(int w, int h)
+{
+    if (w > 0) g_w = w;
+    if (h > 0) g_h = h;
+    if (g_L) {
+        lua_getglobal(g_L, "engine");
+        if (lua_istable(g_L, -1)) {
+            lua_pushnumber(g_L, g_w); lua_setfield(g_L, -2, "W");
+            lua_pushnumber(g_L, g_h); lua_setfield(g_L, -2, "H");
+        }
+        lua_pop(g_L, 1);
+    }
 }
 
 static int clip_ok(int x, int y, int w, int h)
@@ -193,6 +210,53 @@ static int l_image_region(lua_State *L)
     blit_region(im,sx,sy,sw,sh,dx,dy); lua_pushboolean(L,1); return 1;
 }
 
+/* Release cached resource canvases between image-heavy game scenes.
+ * Prevent 240x320 splash/menu bitmaps accumulating inside 1 MiB MRE heap.
+ * Safe to call repeatedly; future E.image() transparently reloads the asset. */
+/* Explicit RGB565 chroma-key draw for compact S30+ sprite sheets.
+ * Some MediaTek MRE image decoders discard PNG alpha / indexed tRNS.
+ * PNG art reserves RGB(255,0,255) = RGB565 0xF81F as a transparent
+ * background. This API only overrides the key during this blit and
+ * leaves all other cached images, including opaque posters, untouched.
+ * Lua: engine.image_region_key(name,sx,sy,w,h,dx,dy,key565)
+ */
+static int l_image_region_key(lua_State *L)
+{
+    const char *name=luaL_checkstring(L,1);
+    int sx=(int)luaL_checknumber(L,2), sy=(int)luaL_checknumber(L,3);
+    int sw=(int)luaL_checknumber(L,4), sh=(int)luaL_checknumber(L,5);
+    int dx=(int)luaL_checknumber(L,6), dy=(int)luaL_checknumber(L,7);
+    ls30_u16 key=(ls30_u16)luaL_checknumber(L,8);
+    cm_image *im=image_find(name);
+    int oldkey, oldhas;
+    if (!im) im=image_load(name);
+    if (!im){lua_pushboolean(L,0);return 1;}
+    oldkey=im->key;oldhas=im->has_key;
+    im->key=key;im->has_key=1;
+    blit_region(im,sx,sy,sw,sh,dx,dy);
+    im->key=(ls30_u16)oldkey;im->has_key=oldhas;
+    lua_pushboolean(L,1);
+    return 1;
+}
+
+static int l_image_release(lua_State *L)
+{
+    const char *name=luaL_checkstring(L,1);
+    int i;
+    for(i=0;i<g_image_count;i++){
+        if(strcmp(g_images[i].name,name)==0){
+            ls30_image_close(g_images[i].canvas);
+            if(i+1<g_image_count){
+                memmove(&g_images[i],&g_images[i+1],
+                        (size_t)(g_image_count-i-1)*sizeof(cm_image));
+            }
+            g_image_count--;
+            memset(&g_images[g_image_count],0,sizeof(cm_image));
+            lua_pushboolean(L,1);return 1;
+        }
+    }
+    lua_pushboolean(L,0);return 1;
+}
 static int l_flush(lua_State *L){(void)L;if(g_layer>=0)ls30_flush(&g_layer,1);return 0;}
 static int l_tick(lua_State *L){lua_pushnumber(L,ls30_ticks());return 1;}
 static int l_exit(lua_State *L){(void)L;ls30_exit();return 0;}
@@ -410,7 +474,8 @@ static int l_runtime_compat(lua_State *L)
 
 static const luaL_Reg funcs[]={
  {"color",l_color},{"clear",l_clear},{"rect",l_rect},{"frame",l_frame},{"line",l_line},{"text",l_text},
- {"image",l_image},{"image_region",l_image_region},{"set_font",l_set_font},{"text_width",l_text_width},{"font_height",l_font_height},
+ {"image",l_image},{"image_region",l_image_region},
+ {"image_region_key",l_image_region_key},{"image_release",l_image_release},{"set_font",l_set_font},{"text_width",l_text_width},{"font_height",l_font_height},
  {"file_exists",l_file_exists},{"file_write",l_file_write},{"file_read",l_file_read},{"file_delete",l_file_delete},
  {"audio_play",l_audio_play},{"audio_stop",l_audio_stop},{"audio_set_volume",l_audio_volume},{"audio_is_playing",l_audio_playing},
  {"flush",l_flush},{"tick_ms",l_tick},{"exit",l_exit},{"log",l_log},{"capabilities",l_capabilities},{"device_info",l_device_info},{"runtime_compat",l_runtime_compat},{0,0}
@@ -418,6 +483,7 @@ static const luaL_Reg funcs[]={
 
 void luas30_bridge_open(lua_State *L)
 {
+    g_L = L;
     lua_newtable(L);luaL_register(L,0,funcs);
     lua_pushnumber(L,g_w);lua_setfield(L,-2,"W");lua_pushnumber(L,g_h);lua_setfield(L,-2,"H");
     lua_pushstring(L,"LuaS30 IDE/1.8.2 RuntimeCompat");lua_setfield(L,-2,"version");
@@ -440,6 +506,7 @@ void luas30_bridge_open(lua_State *L)
 void luas30_bridge_shutdown(void)
 {
     int i;
+    g_L = 0;
     ls30_audio_stop();audio_release();
     for(i=0;i<g_image_count;i++)if(g_images[i].canvas>=0)ls30_image_close(g_images[i].canvas);
     g_image_count=0;

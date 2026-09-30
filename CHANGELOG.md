@@ -46,6 +46,15 @@ theo tên tệp tài liệu gốc.
   `tools/keypad_template_check.lua` (37 assert) + `tools/basic_template_check.lua`
   (10 assert), chạy qua `tools/validate_project_templates_e2e.py` trên **dự án
   vừa tạo từ template**.
+- PROMPT + SKILLS đồ họa cập nhật theo **VPEPixel**
+  (`github.com/nectvety-software/VPEPixel`): mục 30 `doc/ai/PROMPT.md` và skill
+  `vpe-assets` nay ra luật **truy mẫu `.vpe`/`.vpea` có sẵn trong
+  `Documents\VPE Pixel` trước khi vẽ** (~285 asset gốc + bộ theo dự án), kèm
+  đặc tả container animation `VPEA01` (header 20B: w/h/frame_count/delay_ms/loop
+  + N chunk `VPE565` — xác minh 121/121 file thật), lệnh `batch-export`, và
+  luồng tích hợp `engine.image`/colorkey vào project. `gfx-styles` dẫn chiếu
+  theo. Validator: `validate_vpe_assets_skill.py`, `validate_ai_skills.py`,
+  `validate_game_skills.py` PASS.
 - Tài liệu chi tiết: [`doc/release/changelog/CHANGELOG_STUDIO_1_0_1.md`](doc/release/changelog/CHANGELOG_STUDIO_1_0_1.md),
   [`doc/release/validation/VALIDATION_STUDIO_1_0_1.md`](doc/release/validation/VALIDATION_STUDIO_1_0_1.md).
 - NUMBERING: đợt modal + PR này vào thẳng bản 1.0.1 đã phát hành (commit

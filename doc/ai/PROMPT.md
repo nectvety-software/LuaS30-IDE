@@ -2486,3 +2486,60 @@ Không thay đổi phong cách game nếu không liên quan lỗi.
 Nếu phát hiện nguyên nhân khác với dự đoán ban đầu, hãy sửa theo source thực tế và cập nhật lại báo cáo.
 
 **Không kết thúc công việc khi game vẫn có thể mở ra màn hình đen.**
+
+---
+
+## 30. VPE ASSETS (VPEPixel — MẪU .vpe/.vpea CÓ SẴN)
+
+Khi game/app cần sprite, tileset, texture, title art, animation: dùng
+THƯ VIỆN MẪU CÓ SẴN của **VPEPixel**
+(`https://github.com/nectvety-software/VPEPixel`, nhánh `master`; editor
+`vpx_editor`, CLI `scripts/vpe_tool.py`), xuất ra ở `Documents\VPE Pixel`
+(~285 asset gốc: 9 title, 172 sprite/FX, 19 texture, 85 tile + các bộ theo
+dự án). QUY TẮC SỐ 1: **truy mẫu trước khi vẽ** — glob `*.vpe` / `*.vpea`
+theo từ khóa (player, heart, tile, boom, title…), chọn file khớp phong cách
+rồi tích hợp; qua skill `vpe-assets`
+(`doc/ai/skills/vpe-assets/SKILL.md`) — nạp full text rồi làm theo. Không
+tự vẽ pixel art mới khi đã có mẫu, không tự viết decoder `.vpe` mới khi
+`vpe_tool.py` đã có.
+
+```text
+inspect trước mọi giả định kích thước
+.vpe = VPE565: header 16B + RGB565 LE; .vpea = VPEA01: header 20B
+  (w,h,frame_count,delay_ms,loop) + N chunk VPE565 hoàn chỉnh
+atlas/tileset/batch-export/header --lang c cho MRE (RGB565 blit trực tiếp + colorkey)
+trong suốt opt-in (--transparent-white), không mặc định (kẻo ăn art trắng)
+nearest + integer scale; animation .vpea phát theo delay_ms, không sleep trong draw
+generate vào assets/ project, không ghi ngược Documents\VPE Pixel
+build VXP PASS + smoke emulator mới coi là xong
+```
+
+---
+
+## 31. SFX (KAWAIIAK)
+
+Khi game/app cần hiệu ứng âm thanh: sinh bằng engine headless kawaiiak qua
+skill `sfx` (`doc/ai/skills/sfx/SKILL.md`) — nạp full text rồi làm theo.
+Không thu âm thật, không kéo file WAV lạ không rõ nguồn vào project.
+
+```text
+recipe LayerSpec/VOICES -> scripts/make_*_sfx.ts --out assets/sfx --review riêng
+WAV PCM16 mono 16kHz, manifest len_ms/peak/rms/zcr
+nap qua engine.audio_play + has_audio guard, moi tieng optional
+nghe preview that + determinism byte-identical + smoke emulator
+```
+
+---
+
+## 32. GAMEPLAY + GFX STYLES
+
+Khi dựng game mới hoặc đổi lối chơi/style hình: nạp skill `gameplay`
+(mẫu platformer/bắn/runner/puzzle/battle, pool, save) và `gfx-styles`
+(8-bit/2D/2.5D/3D-giả-lập) rồi làm theo. Asset qua skill `vpe-assets`,
+nhạc qua skill `sfx`, phím qua skill `keypad`.
+
+```text
+chon style theo game (yeu -> 2D; RPG -> 2.5D; me cung/dua -> 3D gia lap)
+khong alloc trong loop, flush 1/frame, 15 FPS, heap 1 MB
+doi style = ve lai atlas, khong tron 2 pipeline trong mot game
+```

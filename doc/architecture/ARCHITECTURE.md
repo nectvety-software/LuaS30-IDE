@@ -77,7 +77,8 @@ Các vùng chính:
 `engine/src/runtime_lua.c`
 
 - tạo Lua 5.1 VM;
-- load `conf.lua/.lub`;
+- load `conf.lua/.lub` (screen/fps; runtime đồng bộ lại `engine.W/H` và
+  clip bounds qua `luas30_bridge_set_size` sau khi đọc config);
 - load `main.lua/.lub`;
 - lifecycle;
 - timer/update/draw;

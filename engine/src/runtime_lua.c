@@ -169,6 +169,7 @@ void luas30_runtime_main(void)
 
     luas30_bridge_set_frame(frame,width,height,layer);luas30_bridge_open(L);
     read_config();
+    luas30_bridge_set_size(width,height);
     if(load_first("main.lub","main.lua","main",1)<0){if(!panic_state)error_screen("main.lua missing");return;}
     design_load();hook("load",-1);if(panic_state)return;
     design_draw();hook("draw",-1);flush_frame();started=1;set_timer(1);
