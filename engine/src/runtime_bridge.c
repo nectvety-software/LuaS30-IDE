@@ -5,6 +5,12 @@
 #include "lualib.h"
 #include <string.h>
 
+#if defined(__GNUC__)
+extern const unsigned char *luas30_embedded_lua_find(const char *name,int *len) __attribute__((weak));
+#else
+extern const unsigned char *luas30_embedded_lua_find(const char *name,int *len);
+#endif
+
 #define LS30_IMAGE_CACHE_MAX 12
 #define LS30_NAME_MAX 96
 #define LS30_TEXT_MAX 128
@@ -258,6 +264,8 @@ static int l_image_release(lua_State *L)
     lua_pushboolean(L,0);return 1;
 }
 static int l_flush(lua_State *L){(void)L;if(g_layer>=0)ls30_flush(&g_layer,1);return 0;}
+static int l_frame_suspend(lua_State *L){(void)L;luas30_runtime_frame_suspend();return 0;}
+static int l_frame_resume(lua_State *L){lua_pushboolean(L,luas30_runtime_frame_resume());return 1;}
 static int l_tick(lua_State *L){lua_pushnumber(L,ls30_ticks());return 1;}
 static int l_exit(lua_State *L){(void)L;ls30_exit();return 0;}
 static int l_log(lua_State *L){ls30_log_info(luaL_checkstring(L,1));return 0;}
@@ -384,17 +392,29 @@ static ls30_u8 *load_module_resource(const char *mod, int *len, char *resolved, 
 static int l_require(lua_State *L)
 {
     const char *mod=luaL_checkstring(L,1);
-    char res[128];int len=0;ls30_u8 *code;int st;
+    char res[128];int len=0;ls30_u8 *code=0;int st,owned=0;
+    const unsigned char *embedded=0;
 
     lua_getglobal(L,"package_loaded");lua_getfield(L,-1,mod);
     if(!lua_isnil(L,-1)){lua_remove(L,-2);return 1;}
     lua_pop(L,1);lua_pop(L,1);
 
-    code=load_module_resource(mod,&len,res,(int)sizeof(res));
+#if defined(__GNUC__)
+    if(luas30_embedded_lua_find)embedded=luas30_embedded_lua_find(mod,&len);
+#else
+    embedded=luas30_embedded_lua_find(mod,&len);
+#endif
+    if(embedded && len>0){
+        code=(ls30_u8*)embedded;
+        strncpy(res,mod,sizeof(res)-1);res[sizeof(res)-1]=0;
+    }else{
+        code=load_module_resource(mod,&len,res,(int)sizeof(res));
+        owned=1;
+    }
     if(!code||len<=0)return luaL_error(L,"module '%s' missing",mod);
 
     st=luaL_loadbuffer(L,(const char*)code,(size_t)len,res);
-    ls30_free(code);
+    if(owned)ls30_free(code);
     if(st!=0)return lua_error(L);
 
     st=lua_pcall(L,0,1,0);
@@ -478,7 +498,7 @@ static const luaL_Reg funcs[]={
  {"image_region_key",l_image_region_key},{"image_release",l_image_release},{"set_font",l_set_font},{"text_width",l_text_width},{"font_height",l_font_height},
  {"file_exists",l_file_exists},{"file_write",l_file_write},{"file_read",l_file_read},{"file_delete",l_file_delete},
  {"audio_play",l_audio_play},{"audio_stop",l_audio_stop},{"audio_set_volume",l_audio_volume},{"audio_is_playing",l_audio_playing},
- {"flush",l_flush},{"tick_ms",l_tick},{"exit",l_exit},{"log",l_log},{"capabilities",l_capabilities},{"device_info",l_device_info},{"runtime_compat",l_runtime_compat},{0,0}
+ {"flush",l_flush},{"frame_suspend",l_frame_suspend},{"frame_resume",l_frame_resume},{"tick_ms",l_tick},{"exit",l_exit},{"log",l_log},{"capabilities",l_capabilities},{"device_info",l_device_info},{"runtime_compat",l_runtime_compat},{0,0}
 };
 
 void luas30_bridge_open(lua_State *L)

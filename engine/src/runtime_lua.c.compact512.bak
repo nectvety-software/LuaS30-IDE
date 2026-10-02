@@ -14,31 +14,12 @@ static ls30_u8 *frame=0;
 static int width=240,height=320,started=0,paused=0,panic_state=0,frame_ms=LS30_DEFAULT_FRAME_MS;
 static int ultra_low_memory=0;
 
-void luas30_runtime_frame_suspend(void)
-{
-    if(layer>=0)ls30_layer_delete(layer);
-    layer=-1;frame=0;
-    luas30_bridge_set_frame(0,width,height,-1);
-}
-
-int luas30_runtime_frame_resume(void)
-{
-    if(layer>=0&&frame)return 1;
-    layer=ls30_layer_create(0,0,width,height,LS30_NO_TRANS_COLOR);
-    if(layer<0){layer=-1;frame=0;luas30_bridge_set_frame(0,width,height,-1);return 0;}
-    ls30_clip(0,0,width,height);ls30_font(LS30_FONT_SMALL);
-    frame=ls30_layer_buffer(layer);
-    if(!frame){ls30_layer_delete(layer);layer=-1;luas30_bridge_set_frame(0,width,height,-1);return 0;}
-    luas30_bridge_set_frame(frame,width,height,layer);
-    return 1;
-}
-
 static void flush_frame(void){if(layer>=0)ls30_flush(&layer,1);}
 
 static void error_screen(const char *s)
 {
     ls30_wchar w[96];int n;
-    if(!frame&&!luas30_runtime_frame_resume())return;
+    if(!frame)return;
     ls30_fill(frame,0,0,width,height,LS30_COLOR_BLACK,LS30_COLOR_BLACK);
     ls30_font(LS30_FONT_SMALL);
     n=ls30_ascii_to_ucs2(w,96,s?s:"Lua error");
@@ -230,7 +211,9 @@ void luas30_runtime_main(void)
     if(sw>LS30_MAX_W)sw=LS30_MAX_W;if(sh>LS30_MAX_H)sh=LS30_MAX_H;
     width=sw;height=sh;
 
-    if(!luas30_runtime_frame_resume())return;
+    layer=ls30_layer_create(0,0,width,height,LS30_NO_TRANS_COLOR);if(layer<0)return;
+    ls30_clip(0,0,width,height);ls30_font(LS30_FONT_SMALL);frame=ls30_layer_buffer(layer);
+    if(!frame)return;
 
     L=lua_open();if(!L){error_screen("Lua VM alloc failed");return;}
     luaopen_base(L);lua_settop(L,0);luaopen_table(L);lua_settop(L,0);

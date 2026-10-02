@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse, hashlib, json, os, shutil, subprocess, sys, datetime
+import argparse, hashlib, json, os, shutil, subprocess, sys, datetime, re
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parent.parent
@@ -231,7 +231,8 @@ def prepare_resources(project:Path,res:Path,luac:Path|None,lua_protection:str="a
                 if not luac:
                     raise RuntimeError("Lua bytecode protection requires --luac pointing to a Lua 5.1 luac executable.")
                 dst=res/rel.with_suffix(".lub");dst.parent.mkdir(parents=True,exist_ok=True)
-                run([luac,"-s","-o",dst,src],timeout=30)
+                luac_cmd=([sys.executable,luac] if luac.suffix.lower()==".py" else [luac])
+                run(luac_cmd+["-s","-o",dst,src],timeout=30)
                 bytecode_files+=1;lua_mode="bytecode-stripped"
             elif mode=="minify":
                 dst=res/rel;dst.parent.mkdir(parents=True,exist_ok=True)
@@ -252,7 +253,40 @@ def prepare_resources(project:Path,res:Path,luac:Path|None,lua_protection:str="a
     }
 
 
-def compile_runtime(tc: Toolchain,obj:Path,compat_profile:str="standalone",mre_sdk:MRESDKLayout|None=None):
+def generate_embedded_lua(res:Path,build:Path,modules:list[str]):
+    if not modules:
+        return None
+    entries=[]
+    for mod in modules:
+        rel=Path(*str(mod).split(".")).with_suffix(".lub")
+        src=res/rel
+        if not src.is_file():
+            raise FileNotFoundError(f"Embedded Lua module not found: {src}")
+        data=src.read_bytes()
+        ident="emb_"+re.sub(r"[^A-Za-z0-9_]","_",str(mod))
+        entries.append((str(mod),ident,data))
+        src.unlink()
+    out=build/"embedded_lua.c"
+    lines=["#include <string.h>","#include <stddef.h>"]
+    for _,ident,data in entries:
+        hexes=",".join(f"0x{b:02X}" for b in data)
+        lines.append(f"static const unsigned char {ident}[]={{"+hexes+"};")
+    lines.append("typedef struct {const char*name;const unsigned char*data;int len;} ls30_emb_lua;")
+    lines.append("static const ls30_emb_lua g_emb_lua[]={")
+    for name,ident,data in entries:
+        lines.append(f'{{"{name}",{ident},{len(data)}}},')
+    lines.append("};")
+    lines.append("const unsigned char *luas30_embedded_lua_find(const char *name,int *len){")
+    lines.append("int i;if(len)*len=0;if(!name)return 0;")
+    lines.append("for(i=0;i<(int)(sizeof(g_emb_lua)/sizeof(g_emb_lua[0]));i++){")
+    lines.append("if(strcmp(name,g_emb_lua[i].name)==0){if(len)*len=g_emb_lua[i].len;return g_emb_lua[i].data;}}")
+    lines.append("return 0;}")
+    out.write_text("\n".join(lines)+"\n",encoding="ascii")
+    print(f"[OK] Embedded Lua modules: {len(entries)} -> {out}")
+    return out
+
+
+def compile_runtime(tc: Toolchain,obj:Path,compat_profile:str="standalone",mre_sdk:MRESDKLayout|None=None,extra_sources:list[Path]|None=None):
     """Compile LuaS30 Native SDK + runtime + embedded Lua without vendor MRE libs."""
     obj.mkdir(parents=True,exist_ok=True)
     sdk_sources=[
@@ -263,6 +297,8 @@ def compile_runtime(tc: Toolchain,obj:Path,compat_profile:str="standalone",mre_s
         ENGINE_SRC/"runtime_entry.c",ENGINE_SRC/"runtime_bridge.c",ENGINE_SRC/"runtime_lua.c",
     ]
     sources=sdk_sources+runtime_sources+[LUA_SRC/x for x in LUA_CORE]
+    if extra_sources:
+        sources += [Path(x) for x in extra_sources if x]
     objs=[]
     for i,src in enumerate(sources):
         dst=obj/f"{i:02d}_{src.stem}.o"
@@ -486,7 +522,11 @@ def main():
     print("Linker:",tc.linker)
 
     resource_security=prepare_resources(project,res,luac,a.lua_protection)
-    objs=compile_runtime(tc,obj,compat_profile,mre_sdk)
+    embedded_modules=[str(x) for x in (cfg.get("embed_lua_modules") or [])]
+    embedded_source=generate_embedded_lua(res,build,embedded_modules) if embedded_modules else None
+    resource_security["resource_count"]=len(resources(res))
+    resource_security["embedded_lua_modules"]=len(embedded_modules)
+    objs=compile_runtime(tc,obj,compat_profile,mre_sdk,[embedded_source] if embedded_source else None)
     axf=build/f"{name}.axf"
     link_runtime(tc,objs,axf,entry_symbol,compat_profile,mre_sdk)
 
